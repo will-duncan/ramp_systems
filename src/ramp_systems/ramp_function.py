@@ -90,7 +90,12 @@ class RampFunction:
 
         plt.plot(xvals, yvals)
 
-        
+    def __repr__(self):
+        sign = self.sign
+        L = self.L
+        Delta = self.Delta
+        theta = self.theta
+        return 'RampFunction(sign={!r},L={!r},Delta={!r},theta={!r})'.format(sign,L,Delta,theta)
             
 
 class RampSystem:
@@ -107,46 +112,51 @@ class RampSystem:
         self.theta = theta
         self.gamma = gamma
         self.Network=Network
-        self.set_func_array()
-        self.set_R()
-        self.set_F()
+        self._set_func_array()
+        self._set_R()
+        self._set_vector_field()
+
+    def __call__(self,x,eps):
+        return self.vector_field(x,eps)
+
+    def _set_vector_field(self):
+        self.vector_field = lambda x,eps: -self.gamma*x + self.R(x,eps)
 
 
-    def set_F(self):
-        self.F = lambda x,eps: -self.gamma*x + self.R(x,eps)
 
-
-
-    def set_R(self):
+    def _set_R(self):
         Network = self.Network
         
         def R(x,eps,Network = Network):
             R_array = np.zeros([Network.size()])
             for i in range(Network.size()):
                 cur_prod = 1
-                for source_set in range(Network.inputs(i)):
+                for source_set in Network.logic(i):
+                    print(source_set)
                     cur_sum = 0
                     for j in source_set:
                         cur_sum = cur_sum + self.func_array(x,eps)[i,j]
-                    cur_prod =  cur_prod*cur_sum
+                    cur_prod =  cur_prod*cur_sum 
                 R_array[i] = cur_prod
+            return R_array
         
         self.R = lambda x,eps: R(x,eps)
 
 
-    def set_func_array(self):
+    def _set_func_array(self):
         """
         Creates the func_array attribute.
         """
         Network = self.Network
     
-        def func_array(x, eps, L=self.L, Delta=self.Delta, theta=self.theta,Network = Network):
+        def func_array(x, eps,L=self.L, Delta=self.Delta, theta=self.theta,Network = Network):
             N = Network.size()
-            F = np.empty([N,N],RampFunction)
+            F = np.zeros([N,N])
             for i in range(Network.size()):
-                for j in Network.inputs():
+                for j in Network.inputs(i):
                     sign = 1 if Network.interaction(j,i) else -1
-                    F[i,j] = RampFunction(sign,L[i,j],Delta[i,j],theta[i,j],eps[i,j])
+                    Rij = RampFunction(sign,L[i,j],Delta[i,j],theta[i,j])
+                    F[i,j] = Rij(x[j],eps[i,j])
             return F
 
         self.func_array = lambda x,eps: func_array(x,eps)
