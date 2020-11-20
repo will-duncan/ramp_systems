@@ -10,24 +10,25 @@ import numpy as np
 
 class RampFunction:
 
-    def __init__(self, sign, L, Delta, theta, eps):
+    def __init__(self, sign, L, Delta, theta):
         self.sign = sign 
         self.Delta = Delta
         self.L = L
         self.theta = theta
-        self.eps = eps
         
 
-    def __call__(self,x):
+    def __call__(self,x,eps = None):
         """
         Evaluation method for the ramp function. 
         When eps == 0, returns Delta/2 at x=theta.
         """
+        if eps == None:
+            eps = 0
         sign = self.sign
         Delta = self.Delta
         L = self.L
         theta = self.theta
-        eps = self.eps
+        
         if eps != 0:
             m = Delta/(2*eps)
         else: 
@@ -38,9 +39,11 @@ class RampFunction:
             + (L + Delta)*(H(sign)*H(x-(theta+eps)) + H(-sign)*H((theta-eps)-x)) \
             + (L + Delta/2 + sign*m*(x-theta))*H(x-(theta-eps))*H((theta+eps)-x)*int(eps>0)
 
-    def dx(self,x):
+    def dx(self,x,eps = None):
         """Computes the derivative at x. Returns nan at the corners. """
-        eps = self.eps
+        if eps == None:
+            eps = 0
+        
         theta = self.theta
         H = lambda x: np.heaviside(x,0)
         if eps != 0:
@@ -59,9 +62,11 @@ class RampFunction:
         return out 
 
 
-    def plot(self, xlim=None):
+    def plot(self, eps = None,xlim=None):
+        if eps == None:
+            eps = 0
         theta = self.theta
-        eps = self.eps
+        
 
         if xlim == None:
             xmin = max(0,theta - 2*eps)
@@ -75,18 +80,79 @@ class RampFunction:
         else:
             xvals = [xlim[0], xlim[1]]
         xvals = np.array(xvals)
-        yvals = self(xvals)
+        yvals = self(xvals,eps)
         if (eps == 0): 
             if (xlim[0] < theta):
-                yvals[1] = self(theta-1)
-                yvals[2] = self(theta+1)
+                yvals[1] = self(theta-1,eps)
+                yvals[2] = self(theta+1,eps)
             else:
-                yvals[0] = self(theta+1)
+                yvals[0] = self(theta+1,eps)
 
         plt.plot(xvals, yvals)
 
         
             
 
+class RampSystem:
 
+    def __init__(self,Network,L,Delta,theta,gamma):
+        """
+        Inputs:
+            Network - (_dsgrn.Network)
+            L,U,theta - (numpy array) Each is an NxN array of ramp function parameters
+            gamma - (numpy array) Length N vector of degradation rates 
+        """
+        self.L = L
+        self.Delta = Delta
+        self.theta = theta
+        self.gamma = gamma
+        self.Network=Network
+        self.set_func_array()
+        self.set_R()
+        self.set_F()
+
+
+    def set_F(self):
+        self.F = lambda x,eps: -self.gamma*x + self.R(x,eps)
+
+
+
+    def set_R(self):
+        Network = self.Network
+        
+        def R(x,eps,Network = Network):
+            R_array = np.zeros([Network.size()])
+            for i in range(Network.size()):
+                cur_prod = 1
+                for source_set in range(Network.inputs(i)):
+                    cur_sum = 0
+                    for j in source_set:
+                        cur_sum = cur_sum + self.func_array(x,eps)[i,j]
+                    cur_prod =  cur_prod*cur_sum
+                R_array[i] = cur_prod
+        
+        self.R = lambda x,eps: R(x,eps)
+
+
+    def set_func_array(self):
+        """
+        Creates the func_array attribute.
+        """
+        Network = self.Network
     
+        def func_array(x, eps, L=self.L, Delta=self.Delta, theta=self.theta,Network = Network):
+            N = Network.size()
+            F = np.empty([N,N],RampFunction)
+            for i in range(Network.size()):
+                for j in Network.inputs():
+                    sign = 1 if Network.interaction(j,i) else -1
+                    F[i,j] = RampFunction(sign,L[i,j],Delta[i,j],theta[i,j],eps[i,j])
+            return F
+
+        self.func_array = lambda x,eps: func_array(x,eps)
+
+
+
+
+
+        
