@@ -24,15 +24,34 @@ class RampFunction:
         self.Delta = Delta
         self.L = L
         self.theta = theta
+
+    def __eq__(self,other):
+        if isinstance(other,self.__class__):
+            return (self.sign == other.sign)\
+                 and (self.Delta == other.Delta) \
+                 and (self.L == other.L) \
+                 and (self.theta == other.theta)
+        else: 
+            return False 
+
+    def __repr__(self):
+        sign = self.sign
+        L = self.L
+        Delta = self.Delta
+        theta = self.theta
+        return 'RampFunction(sign={!r},L={!r},Delta={!r},theta={!r})'.format(sign,L,Delta,theta)
+            
         
 
-    def __call__(self,x,eps = None):
+    def __call__(self,x,eps = 0):
         """
         Evaluation method for the ramp function. 
-        When eps == 0, returns Delta/2 at x=theta.
+        When eps == 0, returns np.nan at x==theta
+        Input:
+            x - Requires x is one dimensional, i.e. a vector
+            eps - (scalar, optional)   
         """
-        if eps == None:
-            eps = 0
+        x = np.array(x)
         sign = self.sign
         Delta = self.Delta
         L = self.L
@@ -41,33 +60,45 @@ class RampFunction:
         if eps != 0:
             m = Delta/(2*eps)
         else: 
-            m=0
-        H = lambda x: np.heaviside(x,.5)
+            m=np.inf
+        out = np.zeros(x.shape)
+        #x in singular domain
+        mid_filter = np.logical_and(x >= theta - eps, x <= theta + eps)
+        if eps != 0:
+            out[mid_filter] = (L + Delta/2 + sign*m*(x[mid_filter]-theta))
+        else: 
+            out[mid_filter] = np.nan
+        #x outside singular domain
+        low_filter = x < theta - eps
+        high_filter = x > theta + eps       
+        if sign == 1:
+            out[high_filter] = (L+Delta)
+            out[low_filter] = L
+        elif sign == -1:
+            out[high_filter] = L
+            out[low_filter] = (L+Delta)
 
-        return L*(H(sign)*H((theta-eps) - x) + H(-sign)*(H(x-(theta+eps)))) \
-            + (L + Delta)*(H(sign)*H(x-(theta+eps)) + H(-sign)*H((theta-eps)-x)) \
-            + (L + Delta/2 + sign*m*(x-theta))*H(x-(theta-eps))*H((theta+eps)-x)*int(eps>0)
-
-    def dx(self,x,eps = None):
-        """Computes the derivative at x. Returns nan at the corners. """
-        if eps == None:
-            eps = 0
+        return out
         
+
+        # return L*(H(sign)*H((theta-eps) - x) + H(-sign)*(H(x-(theta+eps)))) \
+        #     + (L + Delta)*(H(sign)*H(x-(theta+eps)) + H(-sign)*H((theta-eps)-x)) \
+        #     + (L + Delta/2 + sign*m*(x-theta))*H(x-(theta-eps))*H((theta+eps)-x)*int(eps>0)
+
+    def dx(self,x,eps = 0):
+        """
+        Computes the derivative at x. Returns nan at the corners.
+        """
+        x = np.array(x)
         theta = self.theta
         H = lambda x: np.heaviside(x,0)
         if eps != 0:
             m = self.Delta/(2*eps)
         else: 
-            m = 0
-        if isinstance(x,np.ndarray):
-            out =  m*H((theta+eps)-x)*H(x-(theta-eps)) 
-            out[np.logical_or(x == theta+eps, x == theta-eps)] = np.nan
-        else:
-            if x == (theta-eps) or x == (theta + eps):
-                out = np.nan
-            else:
-                out = m*H((theta+eps)-x)*H(x-(theta-eps)) 
-                
+            m = np.inf
+        out = np.zeros(x.shape)
+        out[np.logical_and(x>theta-eps, x<theta+eps)] =  self.sign*m 
+        out[np.logical_or(x == theta+eps, x == theta-eps)] = np.nan
         return out 
 
 
@@ -99,13 +130,7 @@ class RampFunction:
 
         plt.plot(xvals, yvals)
 
-    def __repr__(self):
-        sign = self.sign
-        L = self.L
-        Delta = self.Delta
-        theta = self.theta
-        return 'RampFunction(sign={!r},L={!r},Delta={!r},theta={!r})'.format(sign,L,Delta,theta)
-            
+    
 
 class RampSystem:
 
@@ -116,32 +141,32 @@ class RampSystem:
             L,U,theta - (numpy array) Each is an NxN array of ramp function parameters
             gamma - (numpy array) Length N vector of degradation rates 
         """
-        self.L = L
-        self.Delta = Delta
-        self.theta = theta
-        self.gamma = gamma
+        self.L = np.array(L)
+        self.Delta = np.array(Delta)
+        self.theta = np.array(theta)
+        self.gamma = np.array(gamma)
         self.Network=Network
         self._set_func_array()
         self._set_R()
         self._set_vector_field()
 
-    def __call__(self,x,eps):
+    def __call__(self,x,eps=0):
         return self.vector_field(x,eps)
 
     def _set_vector_field(self):
-        self.vector_field = lambda x,eps: -self.gamma*x + self.R(x,eps)
+        self.vector_field = lambda x,eps=0: -self.gamma*x + self.R(x,eps)
 
 
 
     def _set_R(self):
         """
-        Creates the 'R' attribute. R is a [Network.size()] array defined by 
+        Creates the 'R' attribute. R is a Network.size() array defined by 
         x[j]'= -gamma[j]*x[j] + R[j]
         """
         Network = self.Network
         
         def R(x,eps,Network = Network):
-            R_array = np.zeros([Network.size()])
+            R_array = np.zeros(Network.size())
             for i in range(Network.size()):
                 cur_prod = 1
                 for source_set in Network.logic(i):
@@ -151,8 +176,9 @@ class RampSystem:
                     cur_prod =  cur_prod*cur_sum 
                 R_array[i] = cur_prod
             return R_array
-        
-        self.R = lambda x,eps: R(x,eps)
+        N = Network.size()
+        zero = np.zeros([N,N])
+        self.R = lambda x,eps=zero: R(x,eps)
 
 
     def _set_func_array(self):
@@ -160,8 +186,11 @@ class RampSystem:
         Creates the func_array attribute.
         """
         Network = self.Network
-    
+        N = Network.size()
+        zero = np.zeros([N,N])
         def func_array(x, eps,L=self.L, Delta=self.Delta, theta=self.theta,Network = Network):
+            x = np.array(x)
+            eps = np.array(eps)
             N = Network.size()
             F = np.zeros([N,N])
             for i in range(Network.size()):
@@ -170,8 +199,8 @@ class RampSystem:
                     Rij = RampFunction(sign,L[i,j],Delta[i,j],theta[i,j])
                     F[i,j] = Rij(x[j],eps[i,j])
             return F
-
-        self.func_array = lambda x,eps: func_array(x,eps)
+        
+        self.func_array = lambda x,eps=zero: func_array(x,eps)
 
 
     
