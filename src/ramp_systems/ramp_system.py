@@ -1,5 +1,5 @@
 """
-Ramp system class and methods
+RampModel class and methods
 
     Author: William Duncan
 
@@ -8,6 +8,7 @@ Ramp system class and methods
 import matplotlib.pyplot as plt
 import numpy as np
 import itertools
+from ramp_systems.ramp_function import *
 
 def power_set(iterable):
     pool = tuple(iterable)
@@ -15,121 +16,6 @@ def power_set(iterable):
     for k in range(n+1):
         for combo in itertools.combinations(pool,k):
             yield combo
-
-
-class RampFunction:
-
-    def __init__(self, sign, L, Delta, theta):
-        self.sign = sign 
-        self.Delta = Delta
-        self.L = L
-        self.theta = theta
-
-    def __eq__(self,other):
-        if isinstance(other,self.__class__):
-            return (self.sign == other.sign)\
-                 and (self.Delta == other.Delta) \
-                 and (self.L == other.L) \
-                 and (self.theta == other.theta)
-        else: 
-            return False 
-
-    def __repr__(self):
-        sign = self.sign
-        L = self.L
-        Delta = self.Delta
-        theta = self.theta
-        return 'RampFunction(sign={!r},L={!r},Delta={!r},theta={!r})'.format(sign,L,Delta,theta)
-            
-        
-
-    def __call__(self,x,eps = 0):
-        """
-        Evaluation method for the ramp function. 
-        When eps == 0, returns np.nan at x==theta
-        Input:
-            x - Requires x is one dimensional, i.e. a vector
-            eps - (scalar, optional)   
-        """
-        x = np.array(x)
-        sign = self.sign
-        Delta = self.Delta
-        L = self.L
-        theta = self.theta
-        
-        if eps != 0:
-            m = Delta/(2*eps)
-        else: 
-            m=np.inf
-        out = np.zeros(x.shape)
-        #x in singular domain
-        mid_filter = np.logical_and(x >= theta - eps, x <= theta + eps)
-        if eps != 0:
-            out[mid_filter] = (L + Delta/2 + sign*m*(x[mid_filter]-theta))
-        else: 
-            out[mid_filter] = np.nan
-        #x outside singular domain
-        low_filter = x < theta - eps
-        high_filter = x > theta + eps       
-        if sign == 1:
-            out[high_filter] = (L+Delta)
-            out[low_filter] = L
-        elif sign == -1:
-            out[high_filter] = L
-            out[low_filter] = (L+Delta)
-
-        return out
-        
-
-        # return L*(H(sign)*H((theta-eps) - x) + H(-sign)*(H(x-(theta+eps)))) \
-        #     + (L + Delta)*(H(sign)*H(x-(theta+eps)) + H(-sign)*H((theta-eps)-x)) \
-        #     + (L + Delta/2 + sign*m*(x-theta))*H(x-(theta-eps))*H((theta+eps)-x)*int(eps>0)
-
-    def dx(self,x,eps = 0):
-        """
-        Computes the derivative at x. Returns nan at the corners.
-        """
-        x = np.array(x)
-        theta = self.theta
-        H = lambda x: np.heaviside(x,0)
-        if eps != 0:
-            m = self.Delta/(2*eps)
-        else: 
-            m = np.inf
-        out = np.zeros(x.shape)
-        out[np.logical_and(x>theta-eps, x<theta+eps)] =  self.sign*m 
-        out[np.logical_or(x == theta+eps, x == theta-eps)] = np.nan
-        return out 
-
-
-    def plot(self, eps = None,xlim=None):
-        if eps == None:
-            eps = 0
-        theta = self.theta
-        
-
-        if xlim == None:
-            xmin = max(0,theta - 2*eps)
-            xmax = theta + 2*eps
-            xlim = [xmin,xmax]
-        
-        if xlim[0] < theta - eps:
-            xvals = [xlim[0], theta-eps, theta+eps, xlim[1]] 
-        elif xlim[0] < theta + eps:
-            xvals = [xlim[0], theta+eps, xlim[1]]
-        else:
-            xvals = [xlim[0], xlim[1]]
-        xvals = np.array(xvals)
-        yvals = self(xvals,eps)
-        if (eps == 0): 
-            if (xlim[0] < theta):
-                yvals[1] = self(theta-1,eps)
-                yvals[2] = self(theta+1,eps)
-            else:
-                yvals[0] = self(theta+1,eps)
-
-        plt.plot(xvals, yvals)
-
     
 
 class RampSystem:
