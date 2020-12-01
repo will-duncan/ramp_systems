@@ -98,13 +98,13 @@ class TestRampModel:
         assert(RS.is_regular() )
         W = RS.get_W()
         j = 1
-        B = RS.get_B(W)
-        eps_j1_out = RS.get_eps_jp(j,W[j],B[j],1)
+        B = RS._get_B(W)
+        eps_j1_out = RS._get_eps_jp(j,W[j],B[j],1)
         eps_j1_expected = np.array([[0,1.5],[0,0]])
         assert(np.array_equal(eps_j1_out,eps_j1_expected))
         zero = np.zeros([2,2])
-        assert(np.array_equal(RS.get_eps_jp(j,W[j],B[j],2),zero))
-        assert(np.array_equal(RS.get_eps_jp(j,W[j],B[j],3),zero))
+        assert(np.array_equal(RS._get_eps_jp(j,W[j],B[j],2),zero))
+        assert(np.array_equal(RS._get_eps_jp(j,W[j],B[j],3),zero))
 
         
 

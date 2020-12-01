@@ -100,12 +100,12 @@ class RampSystem:
         """
         W = []
         for j in range(self.Network.size()):
-            W_j = self.get_W_j(j)        
+            W_j = self._get_W_j(j)        
             W.append(W_j)    
         return W
                 
 
-    def get_W_j(self,j):
+    def _get_W_j(self,j):
         """
         Input: 
             j - (int) index of a node
@@ -129,7 +129,7 @@ class RampSystem:
         W_j.sort()
         return W_j
 
-    def get_B_jp(self,j,W_j,p):
+    def _get_B_jp(self,j,W_j,p):
         """
         Input:
             j - (int) index of a node
@@ -143,7 +143,7 @@ class RampSystem:
         B_jp = [i for i in Network.outputs(j) if (theta[i,j] > W_j[p-1] and theta[i,j]<W_j[p])]
         return B_jp
 
-    def get_B_j(self,j,W_j):
+    def _get_B_j(self,j,W_j):
         """
         Input:
             j - (int) index of a node
@@ -154,17 +154,17 @@ class RampSystem:
         """
         B_j = [[]]
         for p in range(1,len(W_j)):
-            B_jp = self.get_B_jp(j,W_j,p)
+            B_jp = self._get_B_jp(j,W_j,p)
             B_j.append(B_jp)
         return B_j
             
-    def get_B(self,W):
+    def _get_B(self,W):
         B = []
         for j in range(self.Network.size()):
-            B.append(self.get_B_j(j,W[j]))
+            B.append(self._get_B_j(j,W[j]))
         return B
 
-    def get_eps_jp(self,j,W_j,B_j,p):
+    def _get_eps_jp(self,j,W_j,B_j,p):
         """
         Requires Network.inputs(j) != []
         Input:
@@ -209,21 +209,28 @@ class RampSystem:
             eps_jp[i,j] = Delta[i,j]*D
         return eps_jp
 
-    def get_eps_j(self,j,W_j,B_j):
+    def _get_eps_j(self,j,W_j,B_j):
         N = self.Network.size()
         eps_j = np.zeros([N,N])
         for p in range(1,len(W_j)):
-            eps_j += self.get_eps_jp(j,W_j,B_j,p)
+            eps_j += self._get_eps_jp(j,W_j,B_j,p)
         return eps_j
 
     def optimal_eps(self):
+        """
+        Output:
+            eps - (numpy array) A choice of eps which minimizes the maximum slope
+                  for each j among eps which satisfiy eps'<eps implies (Z,eps')
+                  is strongly equivalent to (Z,0). This guarantees all equilibria 
+                  of DSGRN(Z) have corresponding equilibria in R(Z,eps'). 
+        """
         Network = self.Network
         W = self.get_W()
-        B = self.get_B(W)
+        B = self._get_B(W)
         N = Network.size()
         eps = np.zeros([N,N])
         for j in range(N):
-            eps += self.get_eps_j(j,W[j],B[j])
+            eps += self._get_eps_j(j,W[j],B[j])
         return eps
             
     def is_regular(self,eps=[]):
