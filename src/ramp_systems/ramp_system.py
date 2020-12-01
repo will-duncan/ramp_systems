@@ -198,7 +198,7 @@ class RampSystem:
         k = len(B_jp)-1
         D_list = [D_tilde]
         if p != 1:  #W_j[p-1] != 0
-            W_pm1_dist = (gamma[j]*theta[i[1],j] - W_j[p-1])/(gamma[j]*Delta[i(1),j])
+            W_pm1_dist = (gamma[j]*theta[i(0),j] - W_j[p-1])/(gamma[j]*Delta[i(0),j])
             D_list.append(W_pm1_dist)
         if p != (len(W_j)-1):  #W_j[p] != inf
             W_p_dist = (W_j[p] - gamma[j]*theta[i(k),j])/(gamma[j]*Delta[i(k),j])

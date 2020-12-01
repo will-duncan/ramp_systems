@@ -55,7 +55,21 @@ class TestRampModel:
         assert(np.array_equal(RS.R([5,5]),np.array([1,4])))
         assert(np.array_equal(RS.R([0,0]),np.array([2,5])))
 
-        #TO DO: test with interaction between edges
+        #toggle plus network
+        N,L,Delta,theta,gamma = self.toggle_plus_parameters()
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        assert(RS.is_regular())
+        R_array = np.empty([2,2])
+        sign_array = np.array([[1,-1],[1,1]])
+        
+        x_list = [[0,0],[5,5],[5,15],[5,30],[7,40],[10,5],[10,15],[10,30],[20,5],[20,20],[20,30]]
+        for x in x_list:
+            for (i,j) in itertools.product(range(2),repeat = 2):
+                R_array[i,j] = RampFunction(sign_array[i,j],L[i,j],Delta[i,j],theta[i,j])(x[j])
+            R_vec = np.array([R_array[0,0]*R_array[0,1], R_array[1,0]*R_array[1,1]])
+            expected = -gamma*x + R_vec
+            assert(np.array_equal(RS(x),expected))
+
 
     def test_get_W(self):
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
@@ -92,7 +106,7 @@ class TestRampModel:
         assert(np.array_equal(RS.get_eps_jp(j,W[j],B[j],2),zero))
         assert(np.array_equal(RS.get_eps_jp(j,W[j],B[j],3),zero))
 
-        #TO DO: test with interaction between edges. 
+        
 
     def test_optimal_eps(self):
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
@@ -106,6 +120,32 @@ class TestRampModel:
         expected = np.array([[0,1],[.5,0]])
         assert(np.array_equal(RS.optimal_eps(),expected ))
         assert(~RS.is_regular(expected))
+
+        #toggle plus
+        N,L,Delta,theta,gamma = self.toggle_plus_parameters()
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        expected = np.array([[2.5,11.5],[1.5,3.5]])
+        eps_out = RS.optimal_eps()
+        W = RS.get_W()
+        assert(W == [[0,4.5,5.5,13.5,16.5,np.inf],[0,3.5,10.5,12.5,37.5,np.inf]])
+        m = Delta/(2*eps_out)
+        assert(np.array_equal(expected,eps_out))
+
+        theta = np.array([[7,24],[10,7]])
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        expected = np.array([[1.5,11.5],[1.8/4*1.5,3.5]])
+        eps_out = RS.optimal_eps()
+        m = Delta/(2*eps_out)
+        assert(m[0,0]==m[1,0])
+        assert(np.array_equal(expected,eps_out))
+
+        theta = np.array([[7,24],[7.1,7]])
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        eps_out = RS.optimal_eps()
+        m = Delta/(2*eps_out)
+        assert(m[0,0]==m[1,0])
+        assert(theta[0,0]+eps_out[0,0] == theta[1,0]-eps_out[1,0])
+
 
 
     def test_is_regular(self):
@@ -127,6 +167,7 @@ class TestRampModel:
         eps = np.array([[0,.1],[.1,0]])
         assert(RS.is_regular(eps))
 
+
         
 
     def toggle_switch_parameters(self):
@@ -136,3 +177,12 @@ class TestRampModel:
         theta = np.array([[0,1],[2,0]])
         gamma = np.array([1,2])
         return N, L, Delta, theta, gamma
+
+    def toggle_plus_parameters(self):
+        """Theta is chosen optimally"""
+        N = DSGRN.Network("X0 : (X0)(~X1) \n X1 : (X0)(X1)")
+        L = np.array([[2,2.25],[.7,5]])
+        Delta = np.array([[4,.5],[1.8,10]])
+        theta = np.array([[11,24],[15,7]])
+        gamma = np.array([1,1])
+        return N,L,Delta,theta,gamma
