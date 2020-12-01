@@ -1,4 +1,5 @@
 import DSGRN
+import numpy as np
 from ramp_systems.ramp_function import *
 
 class TestRampFunction:

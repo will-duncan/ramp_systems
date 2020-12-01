@@ -32,15 +32,19 @@ class RampSystem:
         self.theta = np.array(theta)
         self.gamma = np.array(gamma)
         self.Network=Network
+        self._zero = np.zeros([Network.size(),Network.size()])
         self._set_func_array()
         self._set_R()
-        self._set_vector_field()
+        
+        #self._set_vector_field()
 
-    def __call__(self,x,eps=0):
-        return self.vector_field(x,eps)
+    def __call__(self,x,eps=[]):
+        if len(eps) == 0:
+            eps = self._zero
+        return -self.gamma*x + self.R(x,eps)
 
-    def _set_vector_field(self):
-        self.vector_field = lambda x,eps=0: -self.gamma*x + self.R(x,eps)
+    # def _set_vector_field(self):
+    #     self.vector_field = lambda x,eps: -self.gamma*x + self.R(x,eps)
 
 
 
@@ -63,8 +67,7 @@ class RampSystem:
                 R_array[i] = cur_prod
             return R_array
         N = Network.size()
-        zero = np.zeros([N,N])
-        self.R = lambda x,eps=zero: R(x,eps)
+        self.R = lambda x,eps=self._zero: R(x,eps)
 
 
     def _set_func_array(self):
@@ -73,7 +76,6 @@ class RampSystem:
         """
         Network = self.Network
         N = Network.size()
-        zero = np.zeros([N,N])
         def func_array(x, eps,L=self.L, Delta=self.Delta, theta=self.theta,Network = Network):
             x = np.array(x)
             eps = np.array(eps)
@@ -86,27 +88,33 @@ class RampSystem:
                     F[i,j] = Rij(x[j],eps[i,j])
             return F
         
-        self.func_array = lambda x,eps=zero: func_array(x,eps)
+        self.func_array = lambda x,eps=self._zero: func_array(x,eps)
 
 
     
     def get_W(self):
         """
-        Creates the 'W' attribute. W is a length Network.size() list of length 
-        Targets(j) sorted lists. Each list stores all possible values of Lambda_j.
+        Output:
+             W - (list) length Network.size() list of length 
+                 Targets(j) sorted lists. W[j] is the output of get_W_j
         """
         W = []
         for j in range(self.Network.size()):
             W_j = self.get_W_j(j)        
             W.append(W_j)    
-        self.W = W
+        return W
                 
 
     def get_W_j(self,j):
-        W_j = [0,np.inf]
+        """
+        Input: 
+            j - (int) index of a node
+        Output: 
+            W_j - (list) The set of values of Lambda_j union {0,np.inf}, sorted
+        """
+        W_j_set = {0,np.inf}
         N = self.Network.size()
-        zero = np.zeros([N,N])
-        R_j = lambda x: self.R(x,zero)[j]
+        R_j = lambda x: self.R(x)[j]
         inputs = self.Network.inputs(j)
         test_point = np.zeros(N)
         x_low = 1/2*self.theta
@@ -116,7 +124,8 @@ class RampSystem:
             high_pattern = list(set(inputs) - set(low_pattern))
             test_point[low_pattern] = x_low[j,low_pattern]
             test_point[high_pattern] = x_high[j,high_pattern]
-            W_j.append(R_j(test_point)) 
+            W_j_set = W_j_set.union({R_j(test_point)})
+        W_j = list(W_j_set) 
         W_j.sort()
         return W_j
 
@@ -135,7 +144,15 @@ class RampSystem:
         return B_jp
 
     def get_B_j(self,j,W_j):
-        B_j = []
+        """
+        Input:
+            j - (int) index of a node
+            W_j - (list) output of get_W_j(j)
+        Output:
+            B_j - (list) list of lists of indices. For 0<p<len(W_j), B_j[p] is the output of B_jp
+                   B_j[0] = []
+        """
+        B_j = [[]]
         for p in range(1,len(W_j)):
             B_jp = self.get_B_jp(j,W_j,p)
             B_j.append(B_jp)
@@ -143,7 +160,7 @@ class RampSystem:
             
     def get_B(self,W):
         B = []
-        for j in range(0,self.Network.size()):
+        for j in range(self.Network.size()):
             B.append(self.get_B_j(j,W[j]))
         return B
 
@@ -175,17 +192,16 @@ class RampSystem:
         Theta_j.sort()
         i = lambda q: theta_index[Theta_j[q]]
         theta_distance = \
-            lambda q: (theta[i[q],j] - theta[i[q-1],j])/(Delta[i[q],j] + Delta[i[q-1],j])
-        
-        D_tilde = min([theta_distance(q) for q in range(1,len(Theta_j))])
+            lambda q: (theta[i(q),j] - theta[i(q-1),j])/(Delta[i(q),j] + Delta[i(q-1),j])
+        D_tilde = min([theta_distance(q) for q in range(1,len(Theta_j))],default=np.inf)
         ##construct D
-        k = len(B_jp)
+        k = len(B_jp)-1
         D_list = [D_tilde]
         if p != 1:  #W_j[p-1] != 0
-            W_pm1_dist = (gamma[j]*theta[i[1],j] - W_j[p-1])/(gamma[j]*Delta[i[1],j])
+            W_pm1_dist = (gamma[j]*theta[i[1],j] - W_j[p-1])/(gamma[j]*Delta[i(1),j])
             D_list.append(W_pm1_dist)
-        if p!=n:  #W_j[p] != inf
-            W_p_dist = (W_j[p] - gamma[j]*theta[i[k],j])/(gamma[j]*Delta[i[k],j])
+        if p != (len(W_j)-1):  #W_j[p] != inf
+            W_p_dist = (W_j[p] - gamma[j]*theta[i(k),j])/(gamma[j]*Delta[i(k),j])
             D_list.append(W_p_dist)
         D = min(D_list)
         ##construct eps_jp
@@ -200,16 +216,43 @@ class RampSystem:
             eps_j += self.get_eps_jp(j,W_j,B_j,p)
         return eps_j
 
-    def get_optimal_eps(self):
+    def optimal_eps(self):
         Network = self.Network
         W = self.get_W()
         B = self.get_B(W)
         N = Network.size()
         eps = np.zeros([N,N])
         for j in range(N):
-            eps += get_eps_j(j,W[j],B[j])
+            eps += self.get_eps_j(j,W[j],B[j])
         return eps
             
+    def is_regular(self,eps=[]):
+        """
+        Returns True if the switching parameter is regular and False otherwise.
+        This is a strong form of regularity in that it checks if 
+        gamma(theta +/- eps) = Lambda_j for all values of Lambda_j, not just 
+        Lambda_j(kappa)
+        """
+        if len(eps) == 0:
+            eps = self._zero
+
+        N = self.Network.size()
+        L = self.L
+        Delta = self.Delta
+        theta = self.theta
+        gamma = self.gamma
+        if sum(gamma > 0) < N:
+            return False
+        W = self.get_W()
+        for j in range(N):
+            for i in self.Network.outputs(j):
+                if L[i,j]<=0 or Delta[i,j]<=0 or theta[i,j]<=0:
+                    return False
+                W_j = W[j][1:]
+                if gamma[j]*(theta[i,j] + eps[i,j]) in W_j or \
+                    gamma[j]*(theta[i,j] - eps[i,j]) in W_j:
+                    return False
+        return True
 
 
 
