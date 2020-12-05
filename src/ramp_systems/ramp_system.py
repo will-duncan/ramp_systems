@@ -27,11 +27,13 @@ class RampSystem:
             L,U,theta - (numpy array) Each is an NxN array of ramp function parameters
             gamma - (numpy array) Length N vector of degradation rates 
         """
+        self.Network=Network
+        N = Network.size()
         self.L = np.array(L)
         self.Delta = np.array(Delta)
         self.theta = np.array(theta)
-        self.gamma = np.array(gamma)
-        self.Network=Network
+        self.gamma = np.array(gamma).reshape([N,1])
+        
         self._zero = np.zeros([Network.size(),Network.size()])
         self._set_func_array()
         self._set_R()

@@ -36,7 +36,7 @@ class TestCyclicFeedbackSystem:
         N,L,Delta,theta,gamma = self.positive_toggle()
         pos_cfs = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
         x = pos_cfs.singular_equilibrium()
-        assert(np.array_equal(x(.1),np.array([[1.5],[1.5]])))
+        assert(np.allclose(x(.1),np.array([[1.5],[1.5]])))
         
         N,L,Delta,theta,gamma = self.neg_edge_toggle()
         pos_cfs = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
@@ -60,17 +60,58 @@ class TestCyclicFeedbackSystem:
         expected = np.array([[x1],[x2]])
         x = pos_cfs.singular_equilibrium(eps_func)
         assert(np.allclose(x(s_val),expected))
+    
+    def test_in_singular_domain(self):
+        pos_cfs = CyclicFeedbackSystem(*self.positive_toggle())
+        eps = np.array([[0,.5],[.5,0]])
+        
+        x = np.array([.5,.5])
+        assert(not pos_cfs.in_singular_domain(x,eps))
+        assert(not pos_cfs.in_singular_domain(x,eps,0))
+        
+        x = np.array([1.5,1.5])
+        assert(pos_cfs.in_singular_domain(x,eps))
+        assert(pos_cfs.in_singular_domain(x,eps,1))
+
+        x = np.array([.5,1.5])
+        assert(not pos_cfs.in_singular_domain(x,eps))
+        assert(pos_cfs.in_singular_domain(x,eps,0))
+        assert(not pos_cfs.in_singular_domain(x,eps,1))
+        
+    def test_border_crossings(self):
+        N,L,Delta,theta,gamma = self.neg_edge_toggle()
+        L[0,1] = .5
+        Delta[0,1] = 1
+        theta[0,1] = 1.3
+        L[1,0] = .5
+        Delta[1,0] = 1
+        theta[1,0] = 1
+        gamma = [1,1]
+        cfs = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
+        s = sympy.symbols('s')
+        eps_func = sympy.Matrix([[0,1],[1,0]])*s
+        crossings = cfs.border_crossings(0,eps_func)
+        assert(len(crossings) == 1)
+        crossing = crossings[0]
+        assert(crossing[1] == True)
+        s_val = crossing[0]
+        assert(np.allclose(s_val,.3162,rtol = 1e-4))
+
         
 
+
+    ## CyclicFeedbackSystem parameters ##
     def neg_edge_toggle(self):
+        #tests don't assume these parameter values
         N = DSGRN.Network("X0 : ~X1 \n X1 : ~X0")
-        L = np.array([[0,2],[1,0]])
-        Delta = np.array([[0,4],[1,0]])
-        theta = np.array([[0,2],[1,0]])
+        L = np.array([[0,.5],[.5,0]])
+        Delta = np.array([[0,1],[1,0]])
+        theta = np.array([[0,1.3],[1,0]])
         gamma = np.array([1,1])
         return N,L,Delta,theta,gamma
     
     def positive_toggle(self):
+        #tests assume these parameter values
         N = DSGRN.Network("X0 : X1 \n X1 : X0")
         L = np.array([[0,1],[1,0]])
         Delta = np.array([[0,1],[1,0]])
@@ -79,14 +120,16 @@ class TestCyclicFeedbackSystem:
         return N,L,Delta,theta,gamma
 
     def three_node_network(self):
+        #tests don't assume these parameter values
         N = DSGRN.Network("X0 : X2 \n X1: X0 \n X2: ~X1")
         L = np.array([[0,0,1],[0,1,0],[1,0,0]])
         Delta = np.array([[0,0,1],[0,1,0],[1,0,0]])
         theta = np.array([[0,0,1],[0,1,0],[1,0,0]])
-        gamma = np.array([1,1])
+        gamma = np.array([1,1,1])
         return N,L,Delta,theta,gamma  
 
     def negative_toggle(self):
+        #tests don't assume these parameter values
         N = DSGRN.Network("X0 : X1 \n X1 : (~X0)")
         L = np.array([[0,1],[1,0]])
         Delta = np.array([[0,1],[1,0]])
@@ -95,6 +138,7 @@ class TestCyclicFeedbackSystem:
         return N,L,Delta,theta,gamma
     
     def toggle_plus(self):
+        #tests don't assume these parameter values
         N = DSGRN.Network("X0 : (X1)(X0) \n X1 : (~X0)")
         L = np.array([[0,1],[1,0]])
         Delta = np.array([[0,1],[1,0]])
