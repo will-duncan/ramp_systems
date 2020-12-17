@@ -43,6 +43,7 @@ class RampSystem:
     def __call__(self,x,eps=[]):
         if len(eps) == 0:
             eps = self._zero
+        x = np.array(x).reshape([self.Network.size(),1])
         return -self.gamma*x + self.R(x,eps)
 
     # def _set_vector_field(self):
@@ -52,13 +53,13 @@ class RampSystem:
 
     def _set_R(self):
         """
-        Creates the 'R' attribute. R is a Network.size() array defined by 
+        Creates the 'R' attribute. R is an np array with dimensions [Network.size(),1] defined by 
         x[j]'= -gamma[j]*x[j] + R[j]
         """
         Network = self.Network
         
         def R(x,eps,Network = Network):
-            R_array = np.zeros(Network.size())
+            R_array = np.zeros([Network.size(),1])
             for i in range(Network.size()):
                 cur_prod = 1
                 for source_set in Network.logic(i):
@@ -116,7 +117,7 @@ class RampSystem:
         """
         W_j_set = {0,np.inf}
         N = self.Network.size()
-        R_j = lambda x: self.R(x)[j]
+        R_j = lambda x: self.R(x)[j,0]
         inputs = self.Network.inputs(j)
         test_point = np.zeros(N)
         x_low = 1/2*self.theta

@@ -1,7 +1,8 @@
 
 import DSGRN
-from ramp_systems.cyclic_feedback_system import *
+from ramp_systems.cyclic_feedback_system import CyclicFeedbackSystem
 import sympy
+import numpy as np
 
 
 class TestCyclicFeedbackSystem:
@@ -77,8 +78,10 @@ class TestCyclicFeedbackSystem:
         assert(not pos_cfs.in_singular_domain(x,eps))
         assert(pos_cfs.in_singular_domain(x,eps,0))
         assert(not pos_cfs.in_singular_domain(x,eps,1))
+
+
         
-    def test_border_crossings(self):
+    def test_bifurcations(self):
         N,L,Delta,theta,gamma = self.neg_edge_toggle()
         L[0,1] = .5
         Delta[0,1] = 1
@@ -90,15 +93,33 @@ class TestCyclicFeedbackSystem:
         cfs = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
         s = sympy.symbols('s')
         eps_func = sympy.Matrix([[0,1],[1,0]])*s
-        crossings = cfs.border_crossings(0,eps_func)
-        assert(len(crossings) == 1)
-        crossing = crossings[0]
-        assert(crossing[1] == True)
-        s_val = crossing[0]
-        assert(np.allclose(s_val,.3162,rtol = 1e-4))
+        x_eq = cfs.singular_equilibrium(eps_func,lambdify=False)
+        zero_crossings= cfs.j_border_crossings(0,x_eq,eps_func)
+        assert(len(zero_crossings) == 1)
+        for crossing in zero_crossings:
+            assert(np.allclose(crossing,.3162,rtol = 1e-4))
+        crossings,eps_func_out = cfs.border_crossings(eps_func)
+        assert(eps_func_out == eps_func)
+        assert(crossings[0] == zero_crossings)
+        assert(len(crossings[1]) == 1)
+        for crossing in crossings[1]:
+            assert(np.allclose(crossing,.67202))
+        bifurcations = cfs.pos_loop_bifurcations(eps_func)[0]
 
-        
+        assert(not cfs.in_singular_domain(x_eq.subs(s,.37202),np.array([[0,.37202],[.37202,0]]),1))
+        assert(len(bifurcations) == 1)
+        for s_val in bifurcations:
+            assert(np.allclose(s_val,.3162,rtol=1e-4))
+        #make sure border_crossings runs on three nodes
+        cfs = CyclicFeedbackSystem(*self.three_node_network())
+        crossings, eps_func = cfs.border_crossings()
+        assert(True)
 
+
+
+
+
+  
 
     ## CyclicFeedbackSystem parameters ##
     def neg_edge_toggle(self):

@@ -4,22 +4,17 @@ class (see ramp_system.py).
 
     Author: William Duncan
 """
-from ramp_systems.ramp_system import *
+from ramp_systems.ramp_system import RampSystem
 import itertools
 import sympy
 from sympy.matrices import zeros as sympy_zeros
-
+import numpy as np
 
     
 
 
 
-        
-
-
-
-
-
+DEFAULT_TOLERANCE = 1e-4
 
 class CyclicFeedbackSystem(RampSystem):
 
@@ -63,34 +58,80 @@ class CyclicFeedbackSystem(RampSystem):
         self.rho_inv = rho_inv
         self.edge_sign = edge_sign
 
-    def pos_loop_saddles():
-        pass
+    def pos_loop_bifurcations(self,eps_func = None,tol = DEFAULT_TOLERANCE):
+        """
+        Finds all bifurcations for cfs_sign == 1.
+        
+        Inputs:
+            eps_func - (optional) sympy expression describing the parameterization of eps
+        Outputs:
+            s_vals - (set) values of s so that there is a bifurcation at eps_func(s)
+            eps_func - same as input. Returned in case eps_func is not specified 
+                       function call. 
+        """
+        if self.cfs_sign != 1:
+            raise ValueError('pos_loop_bifurcations called but the loop is negative.')
+        crossings, eps_func = self.border_crossings(eps_func,tol)
+        Delta = sympy.Matrix(self.Delta)
+        rho = self.rho
+        slope_product_func = 1
+        for j in range(self.Network.size()):
+            slope_product_func *= Delta[rho[j],j]/(2*eps_func[rho[j],j]) 
+        s = sympy.symbols('s')
+        slope_product = sympy.utilities.lambdify(s,slope_product_func,'numpy')
+        gamma_product = self.gamma.prod()
+        s_vals = set()
+        for j in range(self.Network.size()):
+            for crossing in crossings[j]:
+                if slope_product(crossing) >= gamma_product:
+                    s_vals.add(crossing)
+        return s_vals, eps_func
 
-    def border_crossings(self,j,eps_func=None,tol=1e-4): #,min_tol=1e-10):
+        
+
+
+    def border_crossings(self,eps_func=None,tol=DEFAULT_TOLERANCE):
+        """
+        Finds all values of eps so that the system has a border crossing on the 
+        boundary of loop characteristic cell tau(eps)
+
+        Input:
+            eps_func - (optional) sympy expression describing the parameterization of eps
+                       default is chosen so that all slopes are the same. 
+            tol - desired tolerance to pass to the root isolation function
+        Output:
+            crossings - (list[list]) crossings[j] is the output of
+                        j_border_crossings
+            eps_func - same as input. Returned here in case eps_func is not specified
+                       in function call. 
+        """
+        eps_func,s = self._handle_eps_func(eps_func)
+        x_eq = self.singular_equilibrium(eps_func,lambdify = False)
+        N = self.Network.size()
+        crossings = [[]]*N
+        for j in range(N):
+            crossings[j] = self.j_border_crossings(j,x_eq,eps_func,tol = 1e-4)
+        return crossings, eps_func
+
+
+
+    def j_border_crossings(self,j,x_eq,eps_func,tol=DEFAULT_TOLERANCE): 
         """
         Finds all values of eps so that the system has a border crossing
         of type x[j] = theta[rho[j],j] +/- eps[rho[j],j]. 
+
         Input:
             j - node of the network. 
-            eps_func - (function, optional) function giving a parameterization
-                        of eps.  Assumes the function is univariate and requires 
-                        eps_func(s) > 0 for s>0 and eps_func(0) = sympy_zeros(N,N). 
+            x_eq - sympy expression given by singular_equilibrium(eps_func,lambdify=false) 
+            eps_func - sympy expression describing the parameterization of eps
             tol - tolerance on width of saddle node containg intervals
             
         Output:
-            crossings - list of tuples of the form (s,non-degenerate)
-                s - Border crossing bifurcation occurs approximately 
-                    at eps_func(s) where s is within tol of the true value
-                non-degenerate - (bool) False if the saddle node possibly occurs
-                                 on a codimension < N-1 boundary
+            crossings - (list)  Border crossing occurs approximately at 
+                        eps = eps_func(s) where s is within tol of the true value
         """
-        #min_tol - smallest allowed value of refined_tol
-        eps_func, s = self._handle_eps_func(eps_func)    
-        x_eq = self.singular_equilibrium(eps_func,lambdify=False)
-        for sym in x_eq.free_symbols:
-            x_eq = x_eq.subs(sym,s)
+        s = sympy.symbols("s")
         rho = self.rho
-        #refinement_factor = 1e-2
         xj = x_eq[j]
         xj = xj.cancel()
         num_xj, denom_xj = sympy.fraction(xj)
@@ -99,13 +140,14 @@ class CyclicFeedbackSystem(RampSystem):
             crossing_poly = num_xj - denom_xj*(self.theta[rho[j],j] + beta*eps_func[rho[j],j])
             crossing_poly = sympy.Poly(crossing_poly,domain = 'QQ')
             candidates.extend(crossing_poly.intervals(eps=tol,inf = 0))
-        crossings = []
+        crossings = set()
         while len(candidates) != 0:
             #output of poly.intervals is a tuple of the form ((a,b),number)
             #(a,b) is the interval. I could not find information on what 
-            #number is in the sympy documentation, although typically number == 1
-            root_int, unknown = candidates.pop()
-            assert(unknown == 1)
+            #number is in the sympy documentation, although I assume it is the 
+            #number of roots in the interval and should always be 1 unless there 
+            # is a double root. 
+            root_int, num_roots = candidates.pop()
             a,b = root_int
             if a == b and a == 0:
                 continue
@@ -114,14 +156,8 @@ class CyclicFeedbackSystem(RampSystem):
             #check that for i != j, x[i] is in the singular domain
             a_in = self.in_singular_domain(x_eq.subs(s,a),eps_func.subs(s,a),j)
             b_in = self.in_singular_domain(x_eq.subs(s,b),eps_func.subs(s,b),j)
-            if a_in and b_in:
-                    crossings.append(((a+b)/2,True))
-            elif a_in ^ b_in:
-                # refined_tol = (b-a)*refinement_factor
-                # if refined_tol < min_tol:
-                crossings.append(((a+b)/2,False))
-                # else:
-                    #candidates.append(crossing_poly.intervals(eps=refined_tol,inf=a,sup = b))
+            if a_in or b_in: 
+                crossings.add((a+b)/2)
         return crossings  
             
 
@@ -130,6 +166,7 @@ class CyclicFeedbackSystem(RampSystem):
         """
         Returns true if for each i != j, x[i] is in the closure of the projection 
         of the loop characteristic cell, pi_i(tau(eps)), and false otherwise.
+
         Input:
             x - (Nx1 numpy array) point in phase space
             eps - (NxN numpy array) value of perturbation parameter
@@ -139,17 +176,14 @@ class CyclicFeedbackSystem(RampSystem):
         N = self.Network.size()
         rho = self.rho
         x = np.array(x).reshape([N,1])
-        try:
-            theta_vec = self._theta_vec
-            eps_vec = self._eps_vec
-        except AttributeError:
-            theta_vec = np.zeros([N,1])
-            eps_vec = np.zeros([N,1])
-            for j in range(N):
-                theta_vec[j] = self.theta[rho[j],j]
-                eps_vec[j] = eps[rho[j],j]
-                self._theta_vec = theta_vec
-                self._eps_vec = eps_vec
+        
+        theta_vec = np.zeros([N,1])
+        eps_vec = np.zeros([N,1])
+        for i in range(N):
+            theta_vec[i] = self.theta[rho[i],i]
+            eps_vec[i] = eps[rho[i],i]
+            self._theta_vec = theta_vec
+            self._eps_vec = eps_vec
         in_domain = np.logical_and(x >= self.gamma*(theta_vec - eps_vec),\
                                    x <= self.gamma*(theta_vec + eps_vec))
         if j is not None:
@@ -164,6 +198,7 @@ class CyclicFeedbackSystem(RampSystem):
     def _handle_eps_func(self,eps_func):
         """
         Function for dealing with eps_func argument.
+
         Input:
             eps_func - (sympy expression or None) 
         Output:

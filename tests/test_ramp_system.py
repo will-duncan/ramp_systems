@@ -37,13 +37,14 @@ class TestRampModel:
         #simplest test: toggle switch
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
         RS = RampSystem(N,L,Delta,theta,gamma)
+        gamma = gamma.reshape([2,1])
         eps = np.array([[0,.5],[.5,0]])
         R01 = RampFunction(sign=-1,L=L[0,1],Delta=Delta[0,1],theta=theta[0,1])
         R10 = RampFunction(sign=-1,L=L[1,0],Delta=Delta[1,0],theta=theta[1,0])
         x_list = [[.1,1],[.5,1],[1,1],[1.5,1],[2,1],[1,2.5]]
         for x in x_list:
-            x = np.array(x)
-            R_vec = np.array([R01(x[1],eps[0,1]),R10(x[0],eps[1,0])])
+            x = np.array(x).reshape([2,1])
+            R_vec = np.array([R01(x[1],eps[0,1]),R10(x[0],eps[1,0])]).reshape([2,1])
             expected = -gamma*x + R_vec
             assert(np.array_equal(expected, RS(x,eps)))
         
@@ -52,8 +53,8 @@ class TestRampModel:
         gamma = np.array([1,1])
         theta = np.array([[0,4],[.5,0]])
         RS = RampSystem(N,L,Delta,theta,gamma)
-        assert(np.array_equal(RS.R([5,5]),np.array([1,4])))
-        assert(np.array_equal(RS.R([0,0]),np.array([2,5])))
+        assert(np.array_equal(RS.R([5,5]),np.array([[1],[4]])))
+        assert(np.array_equal(RS.R([0,0]),np.array([[2],[5]])))
 
         #toggle plus network
         N,L,Delta,theta,gamma = self.toggle_plus_parameters()
@@ -61,12 +62,14 @@ class TestRampModel:
         assert(RS.is_regular())
         R_array = np.empty([2,2])
         sign_array = np.array([[1,-1],[1,1]])
+        gamma = gamma.reshape([2,1])
         
         x_list = [[0,0],[5,5],[5,15],[5,30],[7,40],[10,5],[10,15],[10,30],[20,5],[20,20],[20,30]]
         for x in x_list:
             for (i,j) in itertools.product(range(2),repeat = 2):
                 R_array[i,j] = RampFunction(sign_array[i,j],L[i,j],Delta[i,j],theta[i,j])(x[j])
-            R_vec = np.array([R_array[0,0]*R_array[0,1], R_array[1,0]*R_array[1,1]])
+            R_vec = np.array([R_array[0,0]*R_array[0,1], R_array[1,0]*R_array[1,1]]).reshape([2,1])
+            x = np.array(x).reshape([2,1])
             expected = -gamma*x + R_vec
             assert(np.array_equal(RS(x),expected))
 
