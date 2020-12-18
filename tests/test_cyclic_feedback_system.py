@@ -104,7 +104,7 @@ class TestCyclicFeedbackSystem:
         assert(len(crossings[1]) == 1)
         for crossing in crossings[1]:
             assert(np.allclose(crossing,.67202))
-        bifurcations = cfs.pos_loop_bifurcations(eps_func)[0]
+        bifurcations = cfs.get_bifurcations(eps_func)[0]
 
         assert(not cfs.in_singular_domain(x_eq.subs(s,.37202),np.array([[0,.37202],[.37202,0]]),1))
         assert(len(bifurcations) == 1)

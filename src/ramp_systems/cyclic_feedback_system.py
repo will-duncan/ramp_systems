@@ -76,6 +76,13 @@ class CyclicFeedbackSystem(RampSystem):
         return sympy.utilities.lambdify(s,slope_product_func,'numpy')
 
 
+    def get_bifurcations(self,eps_func = None, tol = DEFAULT_TOLERANCE):
+        if self.cfs_sign == 1:
+            bifurcations, eps_func = self.pos_loop_bifurcations(eps_func,tol)
+        else:
+            bifurcations, eps_func = self.neg_loop_bifurcations(eps_func,tol)
+        return bifurcations, eps_func
+
     def neg_loop_bifurcations(self,eps_func = None,tol = DEFAULT_TOLERANCE):
         """
         Finds all bifurcations assuming cfs_sign == -1. 
