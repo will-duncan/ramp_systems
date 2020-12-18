@@ -236,14 +236,14 @@ class RampSystem:
             eps += self._get_eps_j(j,W[j],B[j])
         return eps
             
-    def is_regular(self,eps=[]):
+    def is_regular(self,eps=None):
         """
         Returns True if the switching parameter is regular and False otherwise.
         This is a strong form of regularity in that it checks if 
         gamma(theta +/- eps) = Lambda_j for all values of Lambda_j, not just 
         Lambda_j(kappa)
         """
-        if len(eps) == 0:
+        if eps is None:
             eps = self._zero
 
         N = self.Network.size()

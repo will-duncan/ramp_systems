@@ -81,7 +81,7 @@ class TestCyclicFeedbackSystem:
 
 
         
-    def test_bifurcations(self):
+    def test_pos_bifurcations(self):
         N,L,Delta,theta,gamma = self.neg_edge_toggle()
         L[0,1] = .5
         Delta[0,1] = 1
@@ -115,8 +115,27 @@ class TestCyclicFeedbackSystem:
         crossings, eps_func = cfs.border_crossings()
         assert(True)
 
+    def test_neg_bifurcations(self):
+        N,L,Delta,theta,gamma = self.negative_toggle()
+        L[0,1] = .95
+        Delta[0,1] = 1
+        theta[0,1] = 1.3
+        L[1,0] = .5
+        Delta[1,0] = 1
+        theta[1,0] = 1
+        gamma = [1,1]
+        cfs = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
+        bifurcations = cfs.neg_loop_bifurcations()
+        assert(len(bifurcations) == 0)
 
+        three_node = CyclicFeedbackSystem(*self.three_node_network())
+        bifurcations,eps_func_out = three_node.neg_loop_bifurcations()
+        assert(len(bifurcations) == 1)
+        for bif in bifurcations:
+            assert(np.allclose(bif,.25,rtol=1e-4))
 
+        #TO DO: find example of a stability changing
+        #border crossing bifurcation in negative cycle
 
 
   
@@ -141,11 +160,11 @@ class TestCyclicFeedbackSystem:
         return N,L,Delta,theta,gamma
 
     def three_node_network(self):
-        #tests don't assume these parameter values
+        #tests assume these parameter values
         N = DSGRN.Network("X0 : X2 \n X1: X0 \n X2: ~X1")
-        L = np.array([[0,0,1],[0,1,0],[1,0,0]])
-        Delta = np.array([[0,0,1],[0,1,0],[1,0,0]])
-        theta = np.array([[0,0,1],[0,1,0],[1,0,0]])
+        L = np.array([[0,0,.5],[0.5,0,0],[0,0.5,0]])
+        Delta = np.array([[0,0,1],[1,0,0],[0,1,0]])
+        theta = np.array([[0,0,1],[1,0,0],[0,1,0]])
         gamma = np.array([1,1,1])
         return N,L,Delta,theta,gamma  
 

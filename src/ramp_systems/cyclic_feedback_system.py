@@ -58,9 +58,73 @@ class CyclicFeedbackSystem(RampSystem):
         self.rho_inv = rho_inv
         self.edge_sign = edge_sign
 
+    def _get_slope_product(self,eps_func):
+        """
+        Helper function for pos_loop_bifurcations and neg_loop_bifurcations.
+
+        input:
+            eps_func - sympy expression
+        output: 
+            function which takes a number s and returns the slope product M(eps_func(s)) 
+        """
+        Delta = sympy.Matrix(self.Delta)
+        rho_inv = self.rho_inv
+        slope_product_func = 1
+        for j in range(self.Network.size()):
+            slope_product_func *= Delta[j,rho_inv[j]]/(2*eps_func[j,rho_inv[j]]) 
+        s = sympy.symbols('s')
+        return sympy.utilities.lambdify(s,slope_product_func,'numpy')
+
+
+    def neg_loop_bifurcations(self,eps_func = None,tol = DEFAULT_TOLERANCE):
+        """
+        Finds all bifurcations assuming cfs_sign == -1. 
+        Input: 
+            eps_func - (optional) sympy expression giving parameterization of eps
+                        assumes eps_func is of the form A*s where A is a matrix
+            tol - (optional) tolerance to pass to border_crossings
+        Output:
+            s_vals - (set) there is a bifurcation at eps_func(s) for each s in s_vals
+            eps_func - same as input. Returned here in case eps_func is not specified
+                       in the function call. 
+        TO DO: 
+            implement for gammas not equal
+        """
+        if self.cfs_sign != -1:
+            raise ValueError('neg_loop_bifurcations but the loop is positive')
+        N = self.Network.size()
+        s_vals = set()
+        if N <= 2:
+            return s_vals
+        s = sympy.symbols('s')
+        crossings,eps_func = self.border_crossings(eps_func,tol)
+        slope_product = self._get_slope_product(eps_func)
+        
+        if self.gamma.min() == self.gamma.max():
+            gamma = self.gamma[0,0]
+            secant_condition_val = gamma*np.cos(np.pi/N)**(-N)
+            #border crossing bifurcations
+            for j in range(N):
+                cur_vals = set([crossing for crossing in crossings[j] \
+                    if slope_product(crossing)>=secant_condition_val])
+                s_vals = s_vals.union(cur_vals)
+            #hopf bifurcation in singular domain
+            s_hopf = (slope_product(1)/secant_condition_val)**(1/N) #M(eps(s_hopf)) = gamma*sec(pi/N)**N. 
+            x_hopf = self.singular_equilibrium(eps_func)(s_hopf)
+            eps_hopf = eps_func.subs(s,s_hopf)
+            print(x_hopf,eps_hopf,s_hopf)
+            if self.in_singular_domain(x_hopf,eps_hopf):
+                s_vals.add(s_hopf)            
+            return s_vals, eps_func
+        else:
+            raise ValueError('Inequal gammas not yet implemented for neg_loop_bifurcations.')
+
+                    
+
+
     def pos_loop_bifurcations(self,eps_func = None,tol = DEFAULT_TOLERANCE):
         """
-        Finds all bifurcations for cfs_sign == 1.
+        Finds all bifurcations assuming cfs_sign == 1.
         
         Inputs:
             eps_func - (optional) sympy expression describing the parameterization of eps
@@ -72,19 +136,13 @@ class CyclicFeedbackSystem(RampSystem):
         if self.cfs_sign != 1:
             raise ValueError('pos_loop_bifurcations called but the loop is negative.')
         crossings, eps_func = self.border_crossings(eps_func,tol)
-        Delta = sympy.Matrix(self.Delta)
-        rho = self.rho
-        slope_product_func = 1
-        for j in range(self.Network.size()):
-            slope_product_func *= Delta[rho[j],j]/(2*eps_func[rho[j],j]) 
-        s = sympy.symbols('s')
-        slope_product = sympy.utilities.lambdify(s,slope_product_func,'numpy')
+        slope_product = self._get_slope_product(eps_func)
+       
         gamma_product = self.gamma.prod()
         s_vals = set()
         for j in range(self.Network.size()):
-            for crossing in crossings[j]:
-                if slope_product(crossing) >= gamma_product:
-                    s_vals.add(crossing)
+            cur_vals = set([crossing for crossing in crossings[j] if slope_product(crossing)>= gamma_product])
+            s_vals = s_vals.union(cur_vals)
         return s_vals, eps_func
 
         
@@ -219,8 +277,7 @@ class CyclicFeedbackSystem(RampSystem):
         operating in their linear regime over all of phase space. 
         Input:
             eps_func - (sympy expression) function giving a parameterization of eps
-                        Assumes the function is univariate and requires 
-                        eps_func(s) >= 0 and eps_func(0) = np.zeros([N,N]). 
+                        Assumes the function of the form A*s where A is a matrix
         Output:
             x - (function) returns value of equilibrium at eps_func(s)         
         """
