@@ -18,6 +18,7 @@ def power_set(iterable):
             yield combo
     
 
+
 class RampSystem:
 
     def __init__(self,Network,L,Delta,theta,gamma):
@@ -38,7 +39,8 @@ class RampSystem:
         self._set_func_array()
         self._set_R()
         
-        #self._set_vector_field()
+        
+
 
     def __call__(self,x,eps=[]):
         if len(eps) == 0:
@@ -57,15 +59,15 @@ class RampSystem:
         x[j]'= -gamma[j]*x[j] + R[j]
         """
         Network = self.Network
-        
-        def R(x,eps,Network = Network):
+        func_array = self.func_array
+        def R(x,eps,Network = Network,func_array = func_array):
             R_array = np.zeros([Network.size(),1])
             for i in range(Network.size()):
                 cur_prod = 1
                 for source_set in Network.logic(i):
                     cur_sum = 0
                     for j in source_set:
-                        cur_sum = cur_sum + self.func_array(x,eps)[i,j]
+                        cur_sum = cur_sum + func_array(x,eps)[i,j]
                     cur_prod =  cur_prod*cur_sum 
                 R_array[i] = cur_prod
             return R_array
@@ -79,20 +81,30 @@ class RampSystem:
         """
         Network = self.Network
         N = Network.size()
-        def func_array(x, eps,L=self.L, Delta=self.Delta, theta=self.theta,Network = Network):
+        def func_array(x, eps,Network = Network,ramp_func_array = self.ramp_function_object_array()):
             x = np.array(x)
             eps = np.array(eps)
             N = Network.size()
             F = np.zeros([N,N])
-            for i in range(Network.size()):
+            for i in range(N):
                 for j in Network.inputs(i):
-                    sign = 1 if Network.interaction(j,i) else -1
-                    Rij = RampFunction(sign,L[i,j],Delta[i,j],theta[i,j])
+                    Rij = ramp_func_array[i,j]
                     F[i,j] = Rij(x[j],eps[i,j])
             return F
         
         self.func_array = lambda x,eps=self._zero: func_array(x,eps)
 
+    def ramp_function_object_array(self):
+        N = self.Network.size()
+        array = np.empty([N,N],dtype = RampFunction)
+        L = self.L
+        Delta = self.Delta
+        theta = self.theta
+        for i in range(N):
+            for j in self.Network.inputs(i):
+                sign = 1 if self.Network.interaction(j,i) else -1
+                array[i,j] = RampFunction(sign,L[i,j],Delta[i,j],theta[i,j])
+        return array
 
     
     def get_W(self):
@@ -102,6 +114,7 @@ class RampSystem:
                  Targets(j) sorted lists. W[j] is the output of get_W_j
         """
         W = []
+
         for j in range(self.Network.size()):
             W_j = self._get_W_j(j)        
             W.append(W_j)    

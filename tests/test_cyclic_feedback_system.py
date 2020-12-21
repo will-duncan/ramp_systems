@@ -97,19 +97,19 @@ class TestCyclicFeedbackSystem:
         zero_crossings= cfs.j_border_crossings(0,x_eq,eps_func)
         assert(len(zero_crossings) == 1)
         for crossing in zero_crossings:
-            assert(np.allclose(crossing,.3162,rtol = 1e-4))
+            assert(np.allclose(crossing[0],.3162,rtol = 1e-4))
         crossings,eps_func_out = cfs.border_crossings(eps_func)
         assert(eps_func_out == eps_func)
-        assert(crossings[0] == zero_crossings)
+        assert(crossings[0][0][0] == zero_crossings[0][0])
         assert(len(crossings[1]) == 1)
         for crossing in crossings[1]:
-            assert(np.allclose(crossing,.67202))
+            assert(np.allclose(crossing[0],.67202))
+        #get_bifurcations
         bifurcations = cfs.get_bifurcations(eps_func)[0]
-
         assert(not cfs.in_singular_domain(x_eq.subs(s,.37202),np.array([[0,.37202],[.37202,0]]),1))
-        assert(len(bifurcations) == 1)
-        for s_val in bifurcations:
-            assert(np.allclose(s_val,.3162,rtol=1e-4))
+        assert(len(bifurcations[0]) == 1)
+        for s_val in bifurcations[0]:
+            assert(np.allclose(s_val[0],.3162,rtol=1e-4))
         #make sure border_crossings runs on three nodes
         cfs = CyclicFeedbackSystem(*self.three_node_network())
         crossings, eps_func = cfs.border_crossings()
@@ -126,13 +126,17 @@ class TestCyclicFeedbackSystem:
         gamma = [1,1]
         cfs = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
         bifurcations = cfs.neg_loop_bifurcations()
-        assert(len(bifurcations) == 0)
+        for j in range(3):
+            assert(len(bifurcations[j]) == 0)
 
         three_node = CyclicFeedbackSystem(*self.three_node_network())
         bifurcations,eps_func_out = three_node.neg_loop_bifurcations()
-        assert(len(bifurcations) == 1)
-        for bif in bifurcations:
-            assert(np.allclose(bif,.25,rtol=1e-4))
+        for j in range(3):
+            assert(len(bifurcations[j]) == 0)
+        assert(len(bifurcations[3]) == 1)
+        for bif in bifurcations[3]:
+            assert(np.allclose(bif[0],.25,rtol=1e-4))
+            assert(np.allclose(np.array([[1],[1],[1]]),bif[1],rtol = 1e-4))
 
         #TO DO: find example of a stability changing
         #border crossing bifurcation in negative cycle

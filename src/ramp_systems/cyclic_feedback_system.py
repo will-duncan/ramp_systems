@@ -14,14 +14,19 @@ import numpy as np
 
 
 
-DEFAULT_TOLERANCE = 1e-4
+DEFAULT_TOLERANCE = 1e-6
 
 class CyclicFeedbackSystem(RampSystem):
 
-    def __init__(self,Network,L,Delta,theta,gamma):
-        """Requires that the network is a cyclic feedback network."""
+    def __init__(self,Network,L,Delta,theta,gamma,tol = DEFAULT_TOLERANCE):
+        """
+        Requires that the network is a cyclic feedback network.
+        Input:
+            tol - tolerance used by j_border_crossings()
+        """
         RampSystem.__init__(self,Network,L,Delta,theta,gamma)
         self._set_attributes()
+        self.tol = tol
 
     def _set_attributes(self):
         """
@@ -53,6 +58,9 @@ class CyclicFeedbackSystem(RampSystem):
                 cfs_sign *= -1
                 edge_sign[next_node] = -1
             node = next_node
+        if -1 in rho:
+            raise ValueError("CyclicFeedbackSystem requires Network is a cyclic\
+                feedback network but the nodes don't form a length Network.size() cycle.")
         self.cfs_sign = cfs_sign
         self.rho = rho
         self.rho_inv = rho_inv
@@ -76,22 +84,25 @@ class CyclicFeedbackSystem(RampSystem):
         return sympy.utilities.lambdify(s,slope_product_func,'numpy')
 
 
-    def get_bifurcations(self,eps_func = None, tol = DEFAULT_TOLERANCE):
+    def get_bifurcations(self,eps_func = None):
         if self.cfs_sign == 1:
-            bifurcations, eps_func = self.pos_loop_bifurcations(eps_func,tol)
+            bifurcations, eps_func = self.pos_loop_bifurcations(eps_func)
         else:
-            bifurcations, eps_func = self.neg_loop_bifurcations(eps_func,tol)
+            bifurcations, eps_func = self.neg_loop_bifurcations(eps_func)
         return bifurcations, eps_func
 
-    def neg_loop_bifurcations(self,eps_func = None,tol = DEFAULT_TOLERANCE):
+    def neg_loop_bifurcations(self,eps_func = None):
         """
         Finds all bifurcations assuming cfs_sign == -1. 
         Input: 
             eps_func - (optional) sympy expression giving parameterization of eps
                         assumes eps_func is of the form A*s where A is a matrix
-            tol - (optional) tolerance to pass to border_crossings
         Output:
-            s_vals - (set) there is a bifurcation at eps_func(s) for each s in s_vals
+            s_vals - (list[list[list] ] of length N+1) 
+                     s_vals[j] is a list with entries [s,x] so that there is a 
+                     stability changing border crossing bifurcation at eps_func(s) with 
+                     x[j] = theta[rho[j],j]+/-eps[rho[j],j] if j<N. s_vals[N] are 
+                     the values of s so that there is a Hopf bifurcation
             eps_func - same as input. Returned here in case eps_func is not specified
                        in the function call. 
         TO DO: 
@@ -100,28 +111,26 @@ class CyclicFeedbackSystem(RampSystem):
         if self.cfs_sign != -1:
             raise ValueError('neg_loop_bifurcations but the loop is positive')
         N = self.Network.size()
-        s_vals = set()
+        s_vals = [[] for i in range(N+1)]
         if N <= 2:
             return s_vals
         s = sympy.symbols('s')
-        crossings,eps_func = self.border_crossings(eps_func,tol)
+        crossings,eps_func = self.border_crossings(eps_func)
         slope_product = self._get_slope_product(eps_func)
-        
         if self.gamma.min() == self.gamma.max():
             gamma = self.gamma[0,0]
             secant_condition_val = gamma*np.cos(np.pi/N)**(-N)
             #border crossing bifurcations
             for j in range(N):
                 cur_vals = set([crossing for crossing in crossings[j] \
-                    if slope_product(crossing)>=secant_condition_val])
-                s_vals = s_vals.union(cur_vals)
+                    if slope_product(crossing[0])>=secant_condition_val])
+                s_vals[j].extend(cur_vals)
             #hopf bifurcation in singular domain
             s_hopf = (slope_product(1)/secant_condition_val)**(1/N) #M(eps(s_hopf)) = gamma*sec(pi/N)**N. 
             x_hopf = self.singular_equilibrium(eps_func)(s_hopf)
             eps_hopf = eps_func.subs(s,s_hopf)
-            print(x_hopf,eps_hopf,s_hopf)
             if self.in_singular_domain(x_hopf,eps_hopf):
-                s_vals.add(s_hopf)            
+                s_vals[N].append( [s_hopf,x_hopf] )         
             return s_vals, eps_func
         else:
             raise ValueError('Inequal gammas not yet implemented for neg_loop_bifurcations.')
@@ -129,33 +138,36 @@ class CyclicFeedbackSystem(RampSystem):
                     
 
 
-    def pos_loop_bifurcations(self,eps_func = None,tol = DEFAULT_TOLERANCE):
+    def pos_loop_bifurcations(self,eps_func = None):
         """
         Finds all bifurcations assuming cfs_sign == 1.
         
         Inputs:
             eps_func - (optional) sympy expression describing the parameterization of eps
         Outputs:
-            s_vals - (set) values of s so that there is a bifurcation at eps_func(s)
+            s_vals - (list[list[list] ] length N+1) s_vals[j] are the values of (s,x) so that there is a 
+                     bifurcation at eps_func(s) where x[j] = theta[rho[j],j] +/- eps[rho[j],j]
+                     s_vals[N] = set(). len(s_vals) = N+1 for consistency with neg_loop_bifurcations()
             eps_func - same as input. Returned in case eps_func is not specified 
-                       function call. 
+                       during function call. 
         """
         if self.cfs_sign != 1:
             raise ValueError('pos_loop_bifurcations called but the loop is negative.')
-        crossings, eps_func = self.border_crossings(eps_func,tol)
+        crossings, eps_func = self.border_crossings(eps_func)
         slope_product = self._get_slope_product(eps_func)
        
         gamma_product = self.gamma.prod()
-        s_vals = set()
-        for j in range(self.Network.size()):
-            cur_vals = set([crossing for crossing in crossings[j] if slope_product(crossing)>= gamma_product])
-            s_vals = s_vals.union(cur_vals)
+        N = self.Network.size()
+        s_vals = [[] for i in range(N+1)]
+        for j in range(N):
+            cur_vals = [crossing for crossing in crossings[j] if slope_product(crossing[0])>= gamma_product]
+            s_vals[j].extend(cur_vals)
         return s_vals, eps_func
 
         
 
 
-    def border_crossings(self,eps_func=None,tol=DEFAULT_TOLERANCE):
+    def border_crossings(self,eps_func=None):
         """
         Finds all values of eps so that the system has a border crossing on the 
         boundary of loop characteristic cell tau(eps)
@@ -173,14 +185,14 @@ class CyclicFeedbackSystem(RampSystem):
         eps_func,s = self._handle_eps_func(eps_func)
         x_eq = self.singular_equilibrium(eps_func,lambdify = False)
         N = self.Network.size()
-        crossings = [[]]*N
+        crossings = [[] for i in range(N)]
         for j in range(N):
-            crossings[j] = self.j_border_crossings(j,x_eq,eps_func,tol = 1e-4)
+            crossings[j] = self.j_border_crossings(j,x_eq,eps_func)
         return crossings, eps_func
 
 
 
-    def j_border_crossings(self,j,x_eq,eps_func,tol=DEFAULT_TOLERANCE): 
+    def j_border_crossings(self,j,x_eq,eps_func): 
         """
         Finds all values of eps so that the system has a border crossing
         of type x[j] = theta[rho[j],j] +/- eps[rho[j],j]. 
@@ -192,9 +204,12 @@ class CyclicFeedbackSystem(RampSystem):
             tol - tolerance on width of saddle node containg intervals
             
         Output:
-            crossings - (list)  Border crossing occurs approximately at 
-                        eps = eps_func(s) where s is within tol of the true value
+            crossings - (list[list]) inner lists are of the form [s,x]
+                        Border crossing occurs approximately at eps = eps_func(s) 
+                        where s is within tol of the true value and the value of 
+                        the equilibrium at the crossing is x 
         """
+        tol = self.tol
         s = sympy.symbols("s")
         rho = self.rho
         xj = x_eq[j]
@@ -205,7 +220,7 @@ class CyclicFeedbackSystem(RampSystem):
             crossing_poly = num_xj - denom_xj*(self.theta[rho[j],j] + beta*eps_func[rho[j],j])
             crossing_poly = sympy.Poly(crossing_poly,domain = 'QQ')
             candidates.extend(crossing_poly.intervals(eps=tol,inf = 0))
-        crossings = set()
+        crossings = []
         while len(candidates) != 0:
             #output of poly.intervals is a tuple of the form ((a,b),number)
             #(a,b) is the interval. I could not find information on what 
@@ -222,7 +237,7 @@ class CyclicFeedbackSystem(RampSystem):
             a_in = self.in_singular_domain(x_eq.subs(s,a),eps_func.subs(s,a),j)
             b_in = self.in_singular_domain(x_eq.subs(s,b),eps_func.subs(s,b),j)
             if a_in or b_in: 
-                crossings.add((a+b)/2)
+                crossings.append( [(a+b)/2, np.array(x_eq.subs(s,(a+b)/2)).astype(np.float64)] )
         return crossings  
             
 
@@ -249,8 +264,8 @@ class CyclicFeedbackSystem(RampSystem):
             eps_vec[i] = eps[rho[i],i]
             self._theta_vec = theta_vec
             self._eps_vec = eps_vec
-        in_domain = np.logical_and(x >= self.gamma*(theta_vec - eps_vec),\
-                                   x <= self.gamma*(theta_vec + eps_vec))
+        in_domain = np.logical_and(x >= theta_vec - eps_vec,\
+                                   x <= theta_vec + eps_vec)
         if j is not None:
             in_domain[j] = True
         if sum(in_domain[:,0]) == N:
@@ -278,6 +293,8 @@ class CyclicFeedbackSystem(RampSystem):
                 eps_func = eps_func.subs(sym,s)
         return eps_func, s
     
+
+
     def singular_equilibrium(self,eps_func=None,lambdify = True):
         """
         Compute the equilibrium that would exist if all ramp functions were
