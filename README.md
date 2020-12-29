@@ -17,7 +17,7 @@ from the command line.
 
 Most functions have a docstring giving details about their inputs and outputs.
 Notation is written to be consistent with *Equilibria and their Stability in Networks
-with Steep Sigmoidal Functions* (W. Duncan and T. Gedeon, in preparation.  
+with Steep Sigmoidal Functions* (W. Duncan and T. Gedeon, in preparation).  
 
 # Modules and Functionality
 
@@ -61,9 +61,14 @@ systems with identical degradation rates for each variable $\gamma_i = \gamma$.
 
 Implements the RampToHillSaddleMap class which maps saddle nodes in ramp systems
 to saddle nodes in hill systems. Currently only implemented for cyclic feedback
-systems, for which the map is a bijection. 
+systems, for which the map is N to one where N is the number of nodes. Calling an 
+instance of RampToHillSaddleMap 
+```python
+hill_systems, x_hill_pts = RampToHillSaddleMap(CFS[,eps_func=None])
+```
+will find all saddles for the positive cyclic feedback system CFS and compute the
+corresponding Hill systems and saddle nodes. 
 
 #### To be implemented:
 
-- Ramp system to Hill system map for a general network. This will not be a bijective
-map. 
+- Ramp system to Hill system map for a general network. This will not be a surjective map. 

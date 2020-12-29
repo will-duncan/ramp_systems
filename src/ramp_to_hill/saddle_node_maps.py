@@ -1,6 +1,9 @@
 """
 saddle_node_maps.py
-Implements the N to 1 map from ramp function saddles to hill function saddles.
+Implements the N to 1 map from ramp system saddles to hill system saddles for
+positive cyclic feedback systems. 
+To do: implement the map for networks which are not cyclic feedback networks. 
+ 
     Author: William Duncan
 
 """
@@ -8,7 +11,7 @@ Implements the N to 1 map from ramp function saddles to hill function saddles.
 
 from scipy.optimize import bisect
 import numpy as np
-from ramp_systems.cyclic_feedback_system import DEFAULT_TOLERANCE
+from ramp_systems.cyclic_feedback_system import DEFAULT_TOLERANCE, CyclicFeedbackSystem
 import sympy
 
 class HillParameter:
@@ -50,6 +53,14 @@ class HillSystemParameter:
         self.theta = np.array(theta)
         self.n = np.array(n)
         self.gamma = np.array(gamma).reshape([N,1])
+    
+    def __eq__(self,other):
+        if isinstance(other,HillSystemParameter):
+            return np.array_equal(self.sign,other.sign) and np.array_equal(self.L, other.L) \
+                and np.array_equal(self.Delta, other.Delta) and np.array_equal(self.theta,other.theta) \
+                and np.array_equal(self.n, other.n) and np.array_equal(self.gamma,other.gamma)
+        else: 
+            return False
     
 
 def hill_value(x,hill_parameter):
@@ -112,12 +123,43 @@ class RampToHillSaddleMap:
         self.Network = Network
         self.monotone_function = monotone_function
 
+    def __call__(self, RS, eps_func = None):
+        return self.map_all_saddles(RS,eps_func)
+
+    def map_all_saddles(self,RS,eps_func = None):
+        """
+        Compute all saddle points for the ramp system RS and map each to a Hill
+        system saddle. 
+
+        Input:
+            RS - RampSystem class instance
+        Output:
+            hill_systems - list of hill systems. hill_systems[j] has a saddle at x_hill_pts[j]
+            x_hill_pts - list of x values at which the corresponding hill system has a saddle
+        """
+        hill_systems = []
+        x_hill_pts = []
+        if isinstance(RS,CyclicFeedbackSystem):
+            if RS.cfs_sign == 1:
+                saddles, eps_func = RS.get_bifurcations(eps_func)
+                for i in range(len(saddles)):
+                    for saddle in saddles[i]:
+                        cur_sys, cur_x_hill = self.cyclic_feedback_system_map(RS,saddle,eps_func,i)
+                        hill_systems.append(cur_sys)
+                        x_hill_pts.append(cur_x_hill)
+            else:
+                raise ValueError('A negative cyclic feedback system was passed to map_all_saddles() but only positive CFSs have saddles.')
+        else:
+            raise ValueError('The ramp to hill saddle map is currently only implemented for CyclicFeedbackSystems.')
+
+        return hill_systems, x_hill_pts
+
+
 
 
     def cyclic_feedback_system_map(self,CFS,bifurcation_pt,eps_func,border_crossing_index):
         """
-        The map for a cyclic feedback system. Requires CFS has a bifurcation at 
-        eps. These can be found via CFS.get_bifurcations().
+        The map for a cyclic feedback system. 
 
         Input:
             CFS - CyclicFeedbackSystem instance.
