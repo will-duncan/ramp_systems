@@ -90,6 +90,11 @@ class TestRampModel:
         assert([0,L[0,1],L[0,1]+Delta[0,1],np.inf] == W[0])
         assert([0,L[1,0],L[1,0]+Delta[1,0],np.inf] == W[1])
 
+        RS = RampSystem(*self.toggle_plus_parameters())
+        W = RS.get_W()
+        assert(W[0] == [0,4.5,5.5,13.5,16.5,np.inf])
+        assert(W[1] == [0,3.5,10.5,12.5,37.5,np.inf])
+
     def test_get_eps_jp(self):
         #toggle switch test
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
@@ -171,19 +176,56 @@ class TestRampModel:
         assert(RS.is_regular(eps))
 
 
-        
+    def test_equivalences(self):
+        N, L, Delta, theta, gamma = self.toggle_switch_parameters()
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        eps = np.zeros([2,2])
+        assert(RS.is_weakly_equivalent(eps))
+        assert(RS.is_strongly_equivalent(eps))
+        eps = np.array([[0,1],[1,0]])
+        assert(RS.is_weakly_equivalent(eps))
+        assert(not RS.is_strongly_equivalent(eps))
+        eps = np.array([[0,.5],[.5,0]])
+        assert(RS.is_weakly_equivalent(eps))
+        assert(RS.is_strongly_equivalent(eps))
+        eps = np.array([[0,0],[2,0]])
+        assert(RS.is_weakly_equivalent(eps))
+        assert(not RS.is_strongly_equivalent(eps))
 
+        RS = RampSystem(*self.toggle_plus_parameters())
+        eps = np.zeros([2,2])
+        assert(RS.is_weakly_equivalent(eps))
+        assert(RS.is_strongly_equivalent(eps))
+        eps = np.array([[1,1],[1,1]])
+        assert(RS.is_weakly_equivalent(eps))
+        assert(RS.is_strongly_equivalent(eps))
+        eps = np.array([[1,1],[1,4]])
+        assert(RS.is_weakly_equivalent(eps))
+        assert(not RS.is_strongly_equivalent(eps))
+        eps = np.array([[4,1],[3,1]])
+        assert(not RS.is_weakly_equivalent(eps))
+        assert(not RS.is_strongly_equivalent(eps))
+
+
+
+
+    ##############
+    ## Networks ##
+    ##############
     def toggle_switch_parameters(self):
+        #tests assume these parameters
         N = DSGRN.Network("X0 : (~X1)\n X1 : (~X0)")    
         L = np.array([[0,1],[2,0]])
-        Delta = np.array([[0,1],[2,0]])
+        Delta = np.array([[0,2],[2,0]])
         theta = np.array([[0,1],[2,0]])
         gamma = np.array([1,2])
         return N, L, Delta, theta, gamma
 
     def toggle_plus_parameters(self):
-        """Theta is chosen optimally"""
+        """Theta is chosen optimally and tests assume these parameters."""
         N = DSGRN.Network("X0 : (X0)(~X1) \n X1 : (X0)(X1)")
+        #W[0] = [0,4.5,5.5,13.5,16.5,inf]
+        #W[1] = [0,3.5,10.5,12.5,37.5,inf]
         L = np.array([[2,2.25],[.7,5]])
         Delta = np.array([[4,.5],[1.8,10]])
         theta = np.array([[11,24],[15,7]])

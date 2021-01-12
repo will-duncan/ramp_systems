@@ -39,7 +39,7 @@ class RampSystem:
         self._set_func_array()
         self._set_R()
         
-        
+   
 
 
     def __call__(self,x,eps=[]):
@@ -180,6 +180,55 @@ class RampSystem:
             B.append(self._get_B_j(j,W[j]))
         return B
 
+    def is_weakly_equivalent(self,eps):
+        """
+        Return True if the ramp paramaeter (Z,eps) is weakly equivalent to (Z,0)
+        and False otherwise. Assumes self.is_regular().
+
+        Input: 
+            eps - (numpy array) choice of perturbation parameter
+        """
+        N = self.Network.size()
+        for j in range(N):
+            theta_out = self.theta[:,j]
+            out_index = {theta_out[i]:i for i in range(N)}
+            theta_out = theta_out[theta_out != 0]
+            theta_out.sort()
+            for i in range(len(theta_out)-1):
+                if theta_out[i] + eps[out_index[theta_out[i]],j] >= theta_out[i+1] - eps[out_index[theta_out[i+1]],j]:
+                    return False
+        return True
+
+
+    def is_strongly_equivalent(self,eps):
+        """
+        Returns True if the ramp parameter (Z,eps) is strongly equivalent to (Z,0)
+        and False otherwise. 
+
+        Input:
+            eps - (numpy array) choice of perturbation parameter
+        """
+        if not self.is_weakly_equivalent(eps):
+            return False
+        W = self.get_W()
+        B = self._get_B(W)
+        #print(B,W)
+        N = self.Network.size()
+        for j in range(N):
+            B_j = B[j]
+            W_j = W[j]
+            for p in range(len(B_j)):
+                B_jp = B_j[p]
+                #print(j,p,[(self.theta[B_jp[i],j],eps[B_jp[i],j]) for i in range(len(B_jp))],W_j,)
+                if len(B_jp) == 0:
+                    continue
+                if p != 0 and self.theta[B_jp[0],j] - eps[B_jp[0],j] <= W_j[p-1]:
+                    return False
+                if p != len(B_j) - 1 and self.theta[B_jp[-1],j] - eps[B_jp[-1],j] >= W_j[p]:
+                    return False
+        return True
+
+
     def _get_eps_jp(self,j,W_j,B_j,p):
         """
         Requires Network.inputs(j) != []
@@ -277,7 +326,7 @@ class RampSystem:
                     return False
         return True
 
-
+    
 
 
     

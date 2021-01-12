@@ -330,5 +330,7 @@ class CyclicFeedbackSystem(RampSystem):
         else:
             return x
 
-
+    def is_weakly_equivalent(self,eps):
+        "Overriding RampSystem method. CyclicFeedbackSystems are always weakly equivalent. "
+        return True
         
