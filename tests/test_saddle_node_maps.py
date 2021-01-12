@@ -52,6 +52,13 @@ class TestRampToHillSaddleMap:
         assert(np.allclose(hill_sys_parameter.n[1,0],10.2267,rtol = 1e-2))
         assert(np.allclose(x_hill,np.array([[.7958],[1.5098]]),rtol=1e-2))
 
+        hill_systems,x_hill_pts = the_map(CFS,eps_func)
+        assert(len(hill_systems) == 1)
+        assert(len(x_hill_pts) == 1)
+        assert(hill_systems[0] == hill_sys_parameter)
+        assert(hill_sys_parameter != HillSystemParameter(N,[[0,1],[1,0]],L,Delta,theta,[[0,1],[1,0]],gamma))
+        assert(np.array_equal(x_hill_pts[0], x_hill))
+
         gamma = [1.1,0.9]
         CFS = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
         crossings = CFS.border_crossings(eps_func)[0]
@@ -69,13 +76,13 @@ class TestRampToHillSaddleMap:
     
 
     def positive_toggle(self):
-            #tests assume these parameter values
-            N = DSGRN.Network("X0 : X1 \n X1 : X0")
-            L = np.array([[0,1],[1,0]])
-            Delta = np.array([[0,1],[1,0]])
-            theta = np.array([[0,1.5],[1.5,0]])
-            gamma = np.array([1,1])
-            return N,L,Delta,theta,gamma
+        #tests assume these parameter values
+        N = DSGRN.Network("X0 : X1 \n X1 : X0")
+        L = np.array([[0,1],[1,0]])
+        Delta = np.array([[0,1],[1,0]])
+        theta = np.array([[0,1.5],[1.5,0]])
+        gamma = np.array([1,1])
+        return N,L,Delta,theta,gamma
 
     def neg_edge_toggle(self):
         #tests don't assume these parameter values
