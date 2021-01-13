@@ -3,6 +3,73 @@ Functions for decomposing a RampSystem at a loop characteristic cell.
 """
 import DSGRN
 import numpy as np
+from ramp_systems.cyclic_feedback_system import CyclicFeedbackSystem
+import dsgrn_utilities.graphtranslation as Gtrans
+import itertools
+import sympy
+from ramp_systems.cell import Cell
+
+
+
+def get_saddles(RS,LCC):
+    """
+    Get all the saddle nodes that occur at a loop characteristic cell while (Z,eps)
+    is weakly equivalent to (Z,0). Assumes a parameterization of eps that keeps all
+    slopes constant within the cyclic feedback system. 
+
+    :param RS: RampSystem object
+    :param LCC: Cell object corresponding to a loop characteristic cell of RS.
+    :return: list of tuples of the form 
+    """
+    if not RS.is_opaque(LCC):
+        return []
+    CFS_list = decompose(RS,LCC)
+    saddles = []
+    s = sympy.symbols('s')
+    for CFS, cycle in CFS_list:
+        if CFS.cfs_sign == -1:
+            continue
+        saddle_points, eps_func = CFS.pos_loop_bifurcations()
+        CFS_eps_matrix = np.array(eps_func.subs(s,1))
+        RS_eps_matrix = CFS_matrix_to_RS_matrix(RS,cycle,CFS_eps_matrix)
+        for s_val, x_val in saddle_points:
+            eps = RS_eps_matrix*s_val
+            if RS.is_weakly_equivalent(eps):
+                RS_eps_func = sympy.Matrix(RS_eps_matrix)*s
+                saddles.append((s_val,CFS_vector_to_RS_vector(RS,cycle,x_val),RS_eps_func))
+    return saddles
+
+
+
+def CFS_vector_to_RS_vector(RS,cycle,CFS_vector):
+    N = RS.Network.size()
+    RS_vector = np.zeros([N,1])
+    cycle_N = len(cycle)
+    for j in range(cycle_N):
+        RS_vector[cycle[j],0] = CFS_vector[j,0]
+    return RS_vector
+
+def CFS_matrix_to_RS_matrix(RS,cycle,CFS_matrix):
+    """
+    Create a N x N numpy array which has the entries of CFS_matrix in the appropriate
+    positions where N = RS.Network.size()
+
+    :param RS: RampSystem object
+    :param cycle: list defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
+    :param CFS_matrix: N x N numpy array
+    """
+    N = RS.Network.size()
+    RS_matrix = np.zeros([N,N])
+    cycle_N = len(cycle)
+    for j in range(cycle_N):
+        if j < cycle_N-1:
+            jplus1 = j+1
+        else: 
+            jplus1 = 0
+        RS_matrix[cycle[jplus1],cycle[j]] = CFS_matrix[jplus1,j]
+    return RS_matrix
+
+
 
 def decompose(RS,LCC):
     """
@@ -10,13 +77,14 @@ def decompose(RS,LCC):
     cell. 
 
     :param RS: RampSystem object
-    :param LCC: loop characteristic cell object 
+    :param LCC: Loop characteristic cell represeneted as a Cell object.
     :return: list of tuples of the form (CFS,cycle) where CFS is a CyclicFeedbackSystem
-    object and cycle is the cycle in RS associated to CFS. 
+    object and cycle is the cycle in RS associated to CFS. cycle[j] is the node of RS
+    associated to node j of CFS.
     """
     if not RS.is_regular():
         raise ValueError('decompose requires RampSystem parameters are regular.')
-    if not np.allequal(RS.theta,LCC.theta):
+    if not np.array_equal(RS.theta,LCC.theta):
         raise ValueError('theta for RS and LCC must agree.')
     nodes_seen = set()
     CFS_list = []
@@ -42,7 +110,7 @@ def get_CFS_from_cycle(RS,cycle,LCC):
 
     :param RS: RampSystem object
     :param cycle: list defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
-    :param LCC: LoopCharacteristicCell object. 
+    :param LCC: Loop characteristic cell represeneted as a Cell object. 
     :return: CyclicFeedbackSystem object, CFS. CFS.Network node j corresponds to 
     RS.Network node cycle[j]. 
     """
@@ -64,7 +132,7 @@ def get_cycle_L_and_Delta(RS,cycle,LCC):
     :param RS: RampSystem object
     :param cycle: list defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
     Each entry should be a singular direction of LCC.
-    :param LCC: LoopCharacteristicCell object.
+    :param LCC: Loop characteristic cell represeneted as a Cell object. 
     :return: (L,Delta), two len(cycle) x len(cycle) numpy arrays giving the L and Delta values
     for the cycle decomposition.
     """
@@ -94,7 +162,6 @@ def get_cycle_L_and_Delta(RS,cycle,LCC):
         else: 
             high_test_point[cycle[j]] = (theta[cycle[jplus1],cycle[j]] + theta_rho_plus)/2
         Lambda_high = RS.R(high_test_point)[cycle[jplus1]]
-        print(j,low_test_point,high_test_point)
         if Lambda_low < Lambda_high:
             cycle_L[jplus1,j] = Lambda_low
             cycle_Delta[jplus1,j] = Lambda_high - Lambda_low
@@ -136,93 +203,5 @@ def make_cycle_subnetwork(network,cycle):
     return DSGRN.Network(cycle_spec)
     
 
-#########################################################
-## Loop Characteristic Cell object
-#########################################################
-class LoopCharacteristicCell:
-    
-    def __init__(self,theta,*projections):
-        """
-        Create a LoopCharacteristicCell object.
 
-        :param *projections: jth argument is either a pair of indices i_1, i_2 or single
-        index i which correspond to target node(s) of node j. The jth projection of the
-        cell is given by (theta[i_1,j],theta[i_2,j]) or {theta[i,j]}, respectively. 
-        """
-        self.theta = np.array(theta,dtype = 'float')
-        self.pi = [(projections[j],) if type(projections[j]) == int else tuple(projections[j]) for j in range(len(projections))]
-        self._set_rho()
 
-    def regular_directions(self):
-        #only compute this once
-        try:
-            reg_dir = self._reg_dir
-        except AttributeError:
-            reg_dir = set(j for j in range(len(self.pi)) if len(self.pi[j]) == 2)
-            self._reg_dir = reg_dir
-        return reg_dir
-
-    def singular_directions(self):
-        #only compute this once
-        try: 
-            sin_dir = self._sin_dir
-        except AttributeError:
-            sin_dir = set(j for j in range(len(self.pi)) if len(self.pi[j]) == 1)
-            self._sin_dir = sin_dir
-        return sin_dir
-
-    def __call__(self,j):
-        return self.pi[j]
-
-    def _set_rho(self):
-        rho = [[] for i in range(len(self.pi))]
-        for j in self.regular_directions():
-            rho[j] = j
-        for j in self.singular_directions():
-            rho[j] = self.pi[j][0]
-        self.rho = rho
-
-    def rho_plus(self,j):
-        """
-        Compute the index i where theta[rho[j],j]<theta[i,j] are consecutive
-        thresholds.
-
-        :param j: singular direction of the cell
-        """
-        rho = self.rho
-        theta = self.theta
-        if theta[rho[j],j] == theta[:,j].max():
-            return np.inf
-        else:
-            difference_array = theta[:,j] - theta[rho[j],j]
-            difference_array[difference_array <= 0] = np.inf
-            return np.argmin(difference_array)
-    
-    def rho_minus(self,j):
-        """
-        Compute the index i where theta[i,j]<theta[rho[j],j] are consecutive thresholds.
-
-        :param j: singular direction of the cell
-        """
-        rho = self.rho
-        theta = self.theta
-        if theta[rho[j],j] == theta[:,j].min():
-            return -np.inf
-        else:
-            difference_array = theta[:,j] - theta[rho[j],j]
-            difference_array[difference_array >= 0] = -np.inf
-            return np.argmax(difference_array)
-    
-    def theta_rho_minus(self,j):
-        rho_minus = self.rho_minus(j)
-        if rho_minus == -np.inf:
-            return 0
-        else: 
-            return self.theta[rho_minus,j]
-
-    def theta_rho_plus(self,j):
-        rho_plus = self.rho_plus(j)
-        if rho_plus == np.inf:
-            return np.inf
-        else:
-            return self.theta[rho_plus,j]

@@ -8,7 +8,8 @@ RampModel class and methods
 import matplotlib.pyplot as plt
 import numpy as np
 import itertools
-from ramp_systems.ramp_function import *
+from ramp_systems.ramp_function import RampFunction
+from ramp_systems.cell import Cell
 
 def power_set(iterable):
     pool = tuple(iterable)
@@ -30,17 +31,28 @@ class RampSystem:
         """
         self.Network=Network
         N = Network.size()
-        self.L = np.array(L)
-        self.Delta = np.array(Delta)
-        self.theta = np.array(theta)
-        self.gamma = np.array(gamma).reshape([N,1])
+        self.L = np.array(L,dtype = 'float')
+        self.Delta = np.array(Delta,dtype = 'float')
+        self.theta = np.array(theta,dtype = 'float')
+        self.gamma = np.array(gamma,dtype = 'float').reshape([N,1])
         
         self._zero = np.zeros([Network.size(),Network.size()])
         self._set_func_array()
         self._set_R()
         
    
-
+    def __eq__(self,other):
+        print(self.gamma,other.gamma,self.L,other.L,self.Delta,other.Delta,self.theta,other.theta)
+        if not np.array_equal(self.gamma,other.gamma) or not np.array_equal(self.L,other.L) \
+            or not np.array_equal(self.Delta,other.Delta) or not np.array_equal(self.theta,other.theta):
+            return False
+        for j in range(self.Network.size()):
+            try:
+                if self.Network.inputs(j) != other.Network.inputs(j):
+                    return False
+            except AttributeError:
+                return False
+        return True  
 
     def __call__(self,x,eps=[]):
         if len(eps) == 0:
@@ -51,7 +63,21 @@ class RampSystem:
     # def _set_vector_field(self):
     #     self.vector_field = lambda x,eps: -self.gamma*x + self.R(x,eps)
 
+    def Lambda(self,kappa):
+        """
+        Get value of Lambda on a cell. 
 
+        :param r: index of regular direction of cell
+        :param cell: Cell object representing a cell in the cell complex. 
+        """
+        N = self.Network.size()
+        test_point = np.zeros([N,N])
+        for r in kappa.regular_directions():
+            pi_r = kappa(r)
+            test_point[r] = (self.theta[pi_r[0],r] + self.theta[pi_r[1],r])/2
+        for s in kappa.singular_directions():
+            test_point[s] = self.theta[cell(s)[0],s]
+        return self.R(test_point)
 
     def _set_R(self):
         """
@@ -80,7 +106,6 @@ class RampSystem:
         Creates the func_array attribute.
         """
         Network = self.Network
-        N = Network.size()
         def func_array(x, eps,Network = Network,ramp_func_array = self.ramp_function_object_array()):
             x = np.array(x)
             eps = np.array(eps)
@@ -327,8 +352,56 @@ class RampSystem:
         return True
 
     
+    def theta_order(self,j):
+        """
+        Get a list representing the orders of the thresholds. 
+
+        :param j: index of a node
+        :return: list of integers of the form [i_1,i_2,...,i_k] such that
+        theta[i_1,j]<theta[i_2,j]<...theta[i_k,j] are consecutive thresholds
+        """
+        theta_j = self.theta[:,j].copy()
+        theta_j[theta_j == 0] = np.inf
+        index_list = []
+        while(sum(theta_j == np.inf) < self.Network.size()):
+            i = np.argmin(theta_j)
+            index_list.append(i)
+            theta_j[i] = np.inf
+        return index_list
+
+    def all_theta_orders(self):
+        orders = []
+        for j in self.Network.size():
+            orders.append(self.theta_order(j))
+        return orders
 
 
-    
+    def is_opaque(self,kappa):
+        """
+        Returns true if the regular directions of the cell are invariant under the flow of RS
 
+        :param kappa: Cell object
+        """
+        Lambda = self.Lambda(kappa)
+        for r in kappa.regular_directions:
+            pi_r = kappa(r)
+            left = self.gamma[r,0]*self.theta[pi_r[0],r]
+            right = self.gamma[r,0]*self.theta[pi_r[1],r]
+            if Lambda[r] < left or Lambda[r] > right:
+                return False
+        return True
 
+    def equilibria_regular_direction(self,kappa):
+        """
+        Gives the entries of the equilibrium values for the regular directions of a cell. 
+
+        :param cell: Cell object which is assumed to be opaque. 
+        :return: N x 1 array with equilibrium of x_r' on kappa for regular directions r. 
+        Entries corresponding to singular directions s are 0
+        """
+        Lambda = self.Lambda(kappa)
+        eq = np.zeros([self.Network.size(),1])
+        for r in kappa.regular_directions:
+            gamma_r = self.gamma[r,0]
+            eq[r,0] = Lambda[r]/gamma_r
+        return eq

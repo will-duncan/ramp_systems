@@ -133,7 +133,7 @@ class CyclicFeedbackSystem(RampSystem):
                 s_vals[N].append( [s_hopf,x_hopf] )         
             return s_vals, eps_func
         else:
-            raise ValueError('Inequal gammas not yet implemented for neg_loop_bifurcations.')
+            raise NotImplementedError('Inequal gammas not yet implemented for neg_loop_bifurcations.')
 
                     
 
@@ -273,8 +273,6 @@ class CyclicFeedbackSystem(RampSystem):
         return False
 
 
-
-
     def _handle_eps_func(self,eps_func):
         """
         Function for dealing with eps_func argument.
@@ -292,8 +290,6 @@ class CyclicFeedbackSystem(RampSystem):
             for sym in eps_func.free_symbols:
                 eps_func = eps_func.subs(sym,s)
         return eps_func, s
-    
-
 
     def singular_equilibrium(self,eps_func=None,lambdify = True):
         """
@@ -334,3 +330,35 @@ class CyclicFeedbackSystem(RampSystem):
         "Overriding RampSystem method. CyclicFeedbackSystems are always weakly equivalent. "
         return True
         
+    def is_essential_node(self,j):
+        rho_inv = self.rho_inv
+        rho = self.rho
+        if self.L[j,rho_inv[j]] >= self.gamma[j]*theta[rho[j],j]:
+            return False
+        if self.L[j,rho_inv[j]] + self.Delta[j,rho_inv[j]] <= self.gamma[j]*theta[rho[j],j]:
+            return False
+        return True
+    
+    def is_essential(self):
+        for j in range(self.Network.size()):
+            if not self.is_essential_node(j):
+                return False
+        return True
+
+    def equilibrium_cells(self,eps=[]):
+        """
+        Get the equilibrium cells. 
+
+        :param eps: perturbation parameter given by a NxN numpy array. 
+        :return: List of Cell objects corresponding to the equilibrium cells. 
+        """
+        raise NotImplementedError()
+
+    def equilibria(self,eps=[]):
+        """
+        Compute all equilibria. 
+
+        :param eps: NxN numpy array. 
+        :return: list of x_vals giving the equilibria of the CFS
+        """
+        raise NotImplementedError()

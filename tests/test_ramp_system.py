@@ -206,7 +206,12 @@ class TestRampModel:
         assert(not RS.is_weakly_equivalent(eps))
         assert(not RS.is_strongly_equivalent(eps))
 
-
+    def test_theta_order(self):
+        RS = RampSystem(*self.toggle_plus_parameters())
+        order_0 = RS.theta_order(0)
+        assert(order_0 == [0,1])
+        order_1 = RS.theta_order(1)
+        assert(order_1 == [1,0])
 
 
     ##############
