@@ -20,6 +20,7 @@ def get_saddles(RS,LCC):
     :param RS: RampSystem object
     :param LCC: Cell object corresponding to a loop characteristic cell of RS.
     :return: list of tuples of the form 
+    TO DO: need equilibria values for off cycle directions
     """
     if not RS.is_opaque(LCC):
         return []

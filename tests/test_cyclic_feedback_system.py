@@ -1,6 +1,7 @@
 
 import DSGRN
 from ramp_systems.cyclic_feedback_system import CyclicFeedbackSystem
+from ramp_systems.cell import Cell
 import sympy
 import numpy as np
 
@@ -62,6 +63,26 @@ class TestCyclicFeedbackSystem:
         x = pos_cfs.singular_equilibrium(eps_func)
         assert(np.allclose(x(s_val),expected))
     
+    def test_equilibria(self):
+        N,L,Delta,theta,gamma = self.neg_edge_toggle()
+        CFS = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
+        eq_cells = CFS.switch_equilibrium_cells()
+        assert(len(eq_cells) == 3)
+        expected_cells = [Cell(CFS.theta,(-np.inf,1),(0,np.inf)),Cell(CFS.theta,1,0),Cell(CFS.theta,(1,np.inf),(-np.inf,0))]
+        for cell in eq_cells:
+            print(cell)
+        for kappa in eq_cells:
+            print(CFS.cfs_sign,kappa)
+            assert(kappa in expected_cells)
+        eq_list = CFS.equilibria()
+        assert(len(eq_list) == 3)
+        expected_eq = [np.array([[L[0,1]],U[1,0]]),np.array([[U[0,1]],[L[1,0]]]),np.array(theta[1,0],theta[0,1])]
+        for eq in eq_list:
+            assert(eq in expected_eq)
+        
+        ## test with inessential nodes
+
+
     def test_in_singular_domain(self):
         pos_cfs = CyclicFeedbackSystem(*self.positive_toggle())
         eps = np.array([[0,.5],[.5,0]])
@@ -146,7 +167,7 @@ class TestCyclicFeedbackSystem:
 
     ## CyclicFeedbackSystem parameters ##
     def neg_edge_toggle(self):
-        #tests don't assume these parameter values
+        #tests assume these parameter values
         N = DSGRN.Network("X0 : ~X1 \n X1 : ~X0")
         L = np.array([[0,.5],[.5,0]])
         Delta = np.array([[0,1],[1,0]])

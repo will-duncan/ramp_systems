@@ -13,7 +13,7 @@ class Cell:
         cell is given by (theta[i_1,j],theta[i_2,j]) or {theta[i,j]}, respectively. 
         """
         self.theta = np.array(theta,dtype = 'float')
-        self.pi = [(projections[j],) if type(projections[j]) == int else tuple(projections[j]) for j in range(len(projections))]
+        self.pi = [(projections[j],) if not hasattr(projections[j],'__iter__') else tuple(projections[j]) for j in range(len(projections))]
         self._set_rho()
 
     def regular_directions(self):
@@ -112,3 +112,9 @@ class Cell:
 
     def __str__(self):
         return 'Cell(theta = {},pi = {})'.format(self.theta,self.pi)
+
+    def is_regular(self):
+        if len(self.singular_directions()) == 0:
+            return True
+        else:
+            return False

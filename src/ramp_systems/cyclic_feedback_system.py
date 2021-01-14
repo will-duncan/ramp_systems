@@ -5,6 +5,7 @@ class (see ramp_system.py).
     Author: William Duncan
 """
 from ramp_systems.ramp_system import RampSystem
+from ramp_systems.cell import Cell
 import itertools
 import sympy
 from sympy.matrices import zeros as sympy_zeros
@@ -333,9 +334,9 @@ class CyclicFeedbackSystem(RampSystem):
     def is_essential_node(self,j):
         rho_inv = self.rho_inv
         rho = self.rho
-        if self.L[j,rho_inv[j]] >= self.gamma[j]*theta[rho[j],j]:
+        if self.L[j,rho_inv[j]] >= self.gamma[j]*self.theta[rho[j],j]:
             return False
-        if self.L[j,rho_inv[j]] + self.Delta[j,rho_inv[j]] <= self.gamma[j]*theta[rho[j],j]:
+        if self.L[j,rho_inv[j]] + self.Delta[j,rho_inv[j]] <= self.gamma[j]*self.theta[rho[j],j]:
             return False
         return True
     
@@ -345,20 +346,124 @@ class CyclicFeedbackSystem(RampSystem):
                 return False
         return True
 
-    def equilibrium_cells(self,eps=[]):
-        """
-        Get the equilibrium cells. 
+    def essential_inessential_nodes(self):
+        essential = set()
+        inessential = set()
+        for j in range(self.network.size()):
+            if self.is_essential_node(j):
+                essential.add(j)
+            else:
+                inessential.add(j)
+        return essential, inessential
 
-        :param eps: perturbation parameter given by a NxN numpy array. 
-        :return: List of Cell objects corresponding to the equilibrium cells. 
+    def switch_equilibrium_cells(self):
         """
-        raise NotImplementedError()
+        Get the switch equilibrium cells. 
+
+        :return: List of Cell objects corresponding to the equilibrium cells at eps = 0
+        """
+        if self.is_essential():
+            return self._essential_equilibrium_cells()
+        else:
+            return self._inessential_equilibrium_cells()
+
+    def _essential_equilibrium_cells(self):
+        rho = self.rho
+        N = self.Network.size()
+        theta = self.theta
+        tau = Cell(theta,*[rho[j] for j in range(N)])
+        if self.cfs_sign == -1:
+            return [tau]
+        pi_kappa_L = [(-np.inf,rho[j]) for j in range(N)]
+        pi_kappa_H = [(rho[j],np.inf) for j in range(N)]
+        for j in range(N):
+            if self.edge_sign[rho[j]] == -1:
+                pi_kappa_L[j], pi_kappa_H[j] = pi_kappa_H[j], pi_kappa_L[j]
+        return [tau,Cell(theta,*pi_kappa_L),Cell(theta,*pi_kappa_H)]
+
+    def _inessential_equilibrium_cells(self):
+        rho = self.rho
+        rho_inv = self.rho_inv
+        theta = self.theta
+        gamma = self.gamma
+        L = self.L
+        U = self.L + self.Delta
+        pi_kappa = [() for j in range(self.Network.size())]
+        essential,inessential = self.essential_inessential_nodes()
+        for j in inessential:
+            if L[j,rho_inv[j]] > gamma[j]*theta[rho[j],j]:
+                pi_kappa[j] = (rho[j],np.inf)
+            else:
+                pi_kappa[j] = (-np.inf,rho[j])
+        for j in essential:
+            k = self._get_last_inessential(j)
+            if self.cfs_sign == 1:
+                if L[k,rho_inv[k]] > gamma[k]*theta[rho[k],k]:
+                    pi_kappa[j] = (rho[j],np.inf)
+                else:
+                    pi_kappa[j] = (-np.inf,rho[j])
+            else:
+                if (gamma[k]*theta[rho[k],k]<L[k,rho_inv[k]] and \
+                     0 <= k and k < j) or \
+                     (U[k,rho_inv[k]] < gamma[k]*theta[rho[k],k] and j < k and k<N):
+                    pi_kappa[j] = (rho[j],np.inf)
+                else: 
+                    pi_kappa[j] = (-np.inf,rho[j])
+        for j in range(self.Network.size()):
+            if self.edge_sign[rho[j]] == -1 and j < N-1:
+                pi_kappa[j] = self._flip_pi_j(pi_kappa[j],j)
+            elif j == N-1 and self.edge_sign[rho[j]] == -1:
+                pi_kappa[j] = self._flip_pi_j(pi_kappa[j],j)
+            elif j == N-1 and self.edge_sign[rho[j]] == 1:
+                pi_kappa[j] = self._flip_pi_j(pi_kappa[j],j)
+        return [Cell(self.theta,*pi_kappa)]
+
+    def _flip_pi_j(self,pi_j,j):
+        rho = self.rho
+        if pi_j[0] == -np.inf:
+            return (rho[j],np.inf)
+        else: 
+            return (-np.inf,rho[j])
+
+    def _get_last_inessential(self,j):
+        """
+        Get the first inessential node k of the form k->rho(k+1)->...->j. Assumes
+        not self.is_essential()
+        """
+        rho_inv = self.rho_inv
+        k = rho_inv[j]
+        while self.is_essential_node(k):
+            k = rho_inv[k]
+        return k
 
     def equilibria(self,eps=[]):
         """
         Compute all equilibria. 
 
         :param eps: NxN numpy array. 
-        :return: list of x_vals giving the equilibria of the CFS
+        :return: list of tuples of the form (x_val, stable). x_val gives the value of
+        x at the equilibrium and stable is a boolean which is True when the equilibrium 
+        is stable and False otherwise. 
         """
-        raise NotImplementedError()
+        if len(eps) == 0:
+            eps = self._zero
+        eq_list = []
+        if self.is_strongly_equivalent(eps):
+            eq_cells = self.switch_equilibrium_cells()
+            for kappa in eq_cells:
+                if kappa.is_regular():
+                    cur_eq = self.Lambda(kappa)/self.gamma
+                    eq_list.append((cur_eq,True))
+                else:
+                    eps_func = eps*sympy.symbols('s')
+                    sing_eq_func = self.singular_equilibrium(eps_func)
+                    cur_eq = sing_eq_func(1)
+                    if self.Network.size() <= 2 and self.cfs_sign == -1:
+                        stable = True
+                    else:
+                        stable = False
+                    eq_list.append((cur_eq,stable))
+        else:
+            raise NotImplementedError('Finding all equilibria is not implemented when (Z,eps) is not strongly equivalent to (Z,0).')
+        return eq_list
+        
