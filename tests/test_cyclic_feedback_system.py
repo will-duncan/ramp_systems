@@ -69,18 +69,43 @@ class TestCyclicFeedbackSystem:
         eq_cells = CFS.switch_equilibrium_cells()
         assert(len(eq_cells) == 3)
         expected_cells = [Cell(CFS.theta,(-np.inf,1),(0,np.inf)),Cell(CFS.theta,1,0),Cell(CFS.theta,(1,np.inf),(-np.inf,0))]
-        for cell in eq_cells:
-            print(cell)
         for kappa in eq_cells:
-            print(CFS.cfs_sign,kappa)
             assert(kappa in expected_cells)
         eq_list = CFS.equilibria()
         assert(len(eq_list) == 3)
-        expected_eq = [np.array([[L[0,1]],U[1,0]]),np.array([[U[0,1]],[L[1,0]]]),np.array(theta[1,0],theta[0,1])]
-        for eq in eq_list:
-            assert(eq in expected_eq)
-        
+        U = L + Delta
+        stable_eq = [np.array([[L[0,1]],[U[1,0]]]),np.array([[U[0,1]],[L[1,0]]])]
+        unstable_eq = np.array([[theta[1,0]],[theta[0,1]]])
+        for eq,stable in eq_list:
+            if not stable:
+                assert(np.array_equal(eq,unstable_eq))
+            else:
+                assert(any(np.array_equal(eq,expected) for expected in stable_eq))
+
         ## test with inessential nodes
+        theta[1,0] = 2
+        CFS = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
+        eq_cells = CFS.switch_equilibrium_cells()
+        assert(len(eq_cells) == 1)
+        expected_cell = Cell(CFS.theta,(-np.inf,1),(0,np.inf))
+        assert(eq_cells[0] == expected_cell)
+        eq_list = CFS.equilibria()
+        expected = np.array([[L[0,1]],[U[1,0]]])
+        assert(len(eq_list) == 1)
+        assert(np.array_equal(eq_list[0][0],expected))
+        assert(eq_list[0][1] == True)
+
+        ## test with negative CFS
+        N,L,Delta,theta,gamma = self.negative_toggle()
+        CFS = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
+        eq_cells = CFS.switch_equilibrium_cells()
+        assert(len(eq_cells) == 1)
+        expected_cell = Cell(CFS.theta,1,0)
+        assert(eq_cells[0]==expected_cell)
+        eq_list = CFS.equilibria()
+        assert(len(eq_list) == 1)
+        assert(np.array_equal(eq_list[0][0],np.array([[1.5],[1.5]])))
+        assert(eq_list[0][1] == True)
 
 
     def test_in_singular_domain(self):
@@ -194,11 +219,11 @@ class TestCyclicFeedbackSystem:
         return N,L,Delta,theta,gamma  
 
     def negative_toggle(self):
-        #tests don't assume these parameter values
+        #tests assume these parameter values
         N = DSGRN.Network("X0 : X1 \n X1 : (~X0)")
         L = np.array([[0,1],[1,0]])
         Delta = np.array([[0,1],[1,0]])
-        theta = np.array([[0,1],[1,0]])
+        theta = np.array([[0,1.5],[1.5,0]])
         gamma = np.array([1,1])
         return N,L,Delta,theta,gamma
     

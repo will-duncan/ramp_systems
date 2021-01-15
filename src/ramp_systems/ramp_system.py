@@ -42,7 +42,6 @@ class RampSystem:
         
    
     def __eq__(self,other):
-        print(self.gamma,other.gamma,self.L,other.L,self.Delta,other.Delta,self.theta,other.theta)
         if not np.array_equal(self.gamma,other.gamma) or not np.array_equal(self.L,other.L) \
             or not np.array_equal(self.Delta,other.Delta) or not np.array_equal(self.theta,other.theta):
             return False
@@ -71,10 +70,12 @@ class RampSystem:
         :param cell: Cell object representing a cell in the cell complex. 
         """
         N = self.Network.size()
-        test_point = np.zeros([N,N])
+        test_point = np.zeros([N,1])
         for r in kappa.regular_directions():
             pi_r = kappa(r)
-            test_point[r] = (self.theta[pi_r[0],r] + self.theta[pi_r[1],r])/2
+            left = 0 if pi_r[0] == -np.inf else self.theta[pi_r[0],r]
+            right = 2*left if pi_r[1] == np.inf else self.theta[pi_r[1],r]
+            test_point[r] = (left + right)/2
         for s in kappa.singular_directions():
             test_point[s] = self.theta[cell(s)[0],s]
         return self.R(test_point)
@@ -97,7 +98,6 @@ class RampSystem:
                     cur_prod =  cur_prod*cur_sum 
                 R_array[i] = cur_prod
             return R_array
-        N = Network.size()
         self.R = lambda x,eps=self._zero: R(x,eps)
 
 
@@ -237,14 +237,12 @@ class RampSystem:
             return False
         W = self.get_W()
         B = self._get_B(W)
-        #print(B,W)
         N = self.Network.size()
         for j in range(N):
             B_j = B[j]
             W_j = W[j]
             for p in range(len(B_j)):
                 B_jp = B_j[p]
-                #print(j,p,[(self.theta[B_jp[i],j],eps[B_jp[i],j]) for i in range(len(B_jp))],W_j,)
                 if len(B_jp) == 0:
                     continue
                 if p != 0 and self.theta[B_jp[0],j] - eps[B_jp[0],j] <= W_j[p-1]:

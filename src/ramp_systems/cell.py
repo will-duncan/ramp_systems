@@ -110,8 +110,11 @@ class Cell:
             return False
         return True
 
-    def __str__(self):
-        return 'Cell(theta = {},pi = {})'.format(self.theta,self.pi)
+    def __repr__(self):
+        string = 'Cell(theta = {}'.format(self.theta)
+        for pi_j in self.pi:
+            string += ',' + str(pi_j)
+        return string
 
     def is_regular(self):
         if len(self.singular_directions()) == 0:

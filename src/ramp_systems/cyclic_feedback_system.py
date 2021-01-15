@@ -10,7 +10,7 @@ import itertools
 import sympy
 from sympy.matrices import zeros as sympy_zeros
 import numpy as np
-
+import warnings
     
 
 
@@ -349,7 +349,7 @@ class CyclicFeedbackSystem(RampSystem):
     def essential_inessential_nodes(self):
         essential = set()
         inessential = set()
-        for j in range(self.network.size()):
+        for j in range(self.Network.size()):
             if self.is_essential_node(j):
                 essential.add(j)
             else:
@@ -376,9 +376,8 @@ class CyclicFeedbackSystem(RampSystem):
             return [tau]
         pi_kappa_L = [(-np.inf,rho[j]) for j in range(N)]
         pi_kappa_H = [(rho[j],np.inf) for j in range(N)]
-        for j in range(N):
-            if self.edge_sign[rho[j]] == -1:
-                pi_kappa_L[j], pi_kappa_H[j] = pi_kappa_H[j], pi_kappa_L[j]
+        pi_kappa_L = self._map_cell_from_normal(pi_kappa_L)
+        pi_kappa_H = self._map_cell_from_normal(pi_kappa_H)
         return [tau,Cell(theta,*pi_kappa_L),Cell(theta,*pi_kappa_H)]
 
     def _inessential_equilibrium_cells(self):
@@ -409,16 +408,38 @@ class CyclicFeedbackSystem(RampSystem):
                     pi_kappa[j] = (rho[j],np.inf)
                 else: 
                     pi_kappa[j] = (-np.inf,rho[j])
-        for j in range(self.Network.size()):
-            if self.edge_sign[rho[j]] == -1 and j < N-1:
-                pi_kappa[j] = self._flip_pi_j(pi_kappa[j],j)
-            elif j == N-1 and self.edge_sign[rho[j]] == -1:
-                pi_kappa[j] = self._flip_pi_j(pi_kappa[j],j)
-            elif j == N-1 and self.edge_sign[rho[j]] == 1:
-                pi_kappa[j] = self._flip_pi_j(pi_kappa[j],j)
+        pi_kappa = self._map_cell_from_normal(pi_kappa)
         return [Cell(self.theta,*pi_kappa)]
 
-    def _flip_pi_j(self,pi_j,j):
+    def _map_cell_from_normal(self,pi_kappa):
+        """
+        Maps cell projections for a regular equilibrium cell in the normal form CFS (i.e. all positive
+        edges except for perhaps N->1) to a new list of cell projections which 
+        correspond to an equilibrium cell of this CFS.
+
+        :param pi_kappa: list of tuples of the form (left_index,right_index) where
+        left_index and right_index are one of rho[j], np.inf, -np.inf. 
+        :return: list of tuples of the form (left_index,right_index) where
+        left_index and right_index are one of rho[j], np.inf, -np.inf. 
+        """
+        new_pi_kappa = pi_kappa.copy()
+        edge_sign = self.edge_sign
+        assumed_edge_sign = [1]*self.Network.size()
+        rho = self.rho
+        if self.cfs_sign == -1:
+            #edge rho_inv[0]->0 is repressing in the negative CFS normal form
+            assumed_edge_sign[0] = -1
+        for j in range(self.Network.size()):
+            if not self.is_essential_node(j):
+                continue
+            if assumed_edge_sign[j] != edge_sign[j]:
+                assumed_edge_sign[rho[j]] *= -1
+                assumed_edge_sign[j] *= -1
+                new_pi_kappa[j] = self._get_flipped_pi_j(pi_kappa[j],j)
+        return new_pi_kappa
+
+
+    def _get_flipped_pi_j(self,pi_j,j):
         rho = self.rho
         if pi_j[0] == -np.inf:
             return (rho[j],np.inf)
@@ -438,7 +459,7 @@ class CyclicFeedbackSystem(RampSystem):
 
     def equilibria(self,eps=[]):
         """
-        Compute all equilibria. 
+        Compute all equilibria, including the singular equilibrium when eps == 0
 
         :param eps: NxN numpy array. 
         :return: list of tuples of the form (x_val, stable). x_val gives the value of
@@ -455,13 +476,22 @@ class CyclicFeedbackSystem(RampSystem):
                     cur_eq = self.Lambda(kappa)/self.gamma
                     eq_list.append((cur_eq,True))
                 else:
-                    eps_func = eps*sympy.symbols('s')
-                    sing_eq_func = self.singular_equilibrium(eps_func)
-                    cur_eq = sing_eq_func(1)
-                    if self.Network.size() <= 2 and self.cfs_sign == -1:
+                    if np.array_equal(eps,self._zero):
+                        cur_eq = np.array([[self.theta[self.rho[j],j]] for j in range(self.Network.size())])
+                    else:
+                        eps_func = sympy.Matrix(eps)*sympy.symbols('s')
+                        sing_eq_func = self.singular_equilibrium(eps_func)
+                        cur_eq = sing_eq_func(1)
+                    if self.cfs_sign == 1:
+                        stable = False
+                    elif self.Network.size() <= 2 and self.cfs_sign == -1:
                         stable = True
                     else:
                         stable = False
+                        warnings.warn('Singular equilibria of negative CFSs with \
+                            length >=3 are assumed to be unstable, although they \
+                            could have stabilized through a Hopf bifurcation.')
+                        
                     eq_list.append((cur_eq,stable))
         else:
             raise NotImplementedError('Finding all equilibria is not implemented when (Z,eps) is not strongly equivalent to (Z,0).')
