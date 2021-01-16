@@ -29,6 +29,9 @@ class CyclicFeedbackSystem(RampSystem):
         self._set_attributes()
         self.tol = tol
 
+    def __repr__(self):
+        return 'CyclicFeedbackSystem(Network = {},L = {},Delta = {},theta = {},gamma = {})'.format(self.Network.specification(),self.L,self.Delta,self.theta,self.gamma)
+
     def _set_attributes(self):
         """
         Sets the attributes 'cfs_sign', 'rho', 'rho_inv','edge_sign' 
@@ -156,7 +159,6 @@ class CyclicFeedbackSystem(RampSystem):
             raise ValueError('pos_loop_bifurcations called but the loop is negative.')
         crossings, eps_func = self.border_crossings(eps_func)
         slope_product = self._get_slope_product(eps_func)
-       
         gamma_product = self.gamma.prod()
         N = self.Network.size()
         s_vals = [[] for i in range(N+1)]
@@ -166,8 +168,6 @@ class CyclicFeedbackSystem(RampSystem):
         return s_vals, eps_func
 
         
-
-
     def border_crossings(self,eps_func=None):
         """
         Finds all values of eps so that the system has a border crossing on the 

@@ -13,33 +13,86 @@ from ramp_systems.cell import Cell
 
 def get_saddles(RS,LCC):
     """
-    Get all the saddle nodes that occur at a loop characteristic cell while (Z,eps)
-    is weakly equivalent to (Z,0). Assumes a parameterization of eps that keeps all
-    slopes constant within the cyclic feedback system. 
+    Get all the saddle nodes that occur at a loop characteristic cell and are associated 
+    with cycle while (Z,eps) is weakly equivalent to (Z,0). Uses a parameterization 
+    of eps that keeps all slopes constant within the cyclic feedback system. 
 
     :param RS: RampSystem object
     :param LCC: Cell object corresponding to a loop characteristic cell of RS.
-    :return: list of tuples of the form 
-    TO DO: need equilibria values for off cycle directions
+    :return: list of tuples of the form (s_val,(saddle_val,stable),eps_func)
     """
-    if not RS.is_opaque(LCC):
-        return []
     CFS_list = decompose(RS,LCC)
-    saddles = []
+    saddles = {CFS[1]:[] for CFS in CFS_list}
+    if not RS.is_opaque(LCC):
+        return saddles
+    equilibria_dict = cycle_equilibria(RS,LCC,CFS_list)
     s = sympy.symbols('s')
-    for CFS, cycle in CFS_list:
+    for CFS,cycle in CFS_list:
         if CFS.cfs_sign == -1:
+            #negative CFSs don't have saddle nodes
             continue
-        saddle_points, eps_func = CFS.pos_loop_bifurcations()
+        saddle_points, eps_func = CFS.get_bifurcations()
+        #flatten saddle_points
+        saddle_points = [saddles for j in range(len(saddles)) for saddles in saddle_points[j]]
         CFS_eps_matrix = np.array(eps_func.subs(s,1))
         RS_eps_matrix = CFS_matrix_to_RS_matrix(RS,cycle,CFS_eps_matrix)
         for s_val, x_val in saddle_points:
             eps = RS_eps_matrix*s_val
             if RS.is_weakly_equivalent(eps):
+                saddle_dict = equilibria_dict.copy()
+                # get off cycle equilibria. stable set to True for this x_val
+                # is a hack so that CFS_equilibria_RS_equilibria gives stable == True
+                # when the off cycle equilibrium is stable. 
+                saddle_dict[cycle] = [(x_val,True)] 
+                RS_saddles = CFS_equilibria_to_RS_equilibria(RS,LCC,saddle_dict,CFS_list)
                 RS_eps_func = sympy.Matrix(RS_eps_matrix)*s
-                saddles.append((s_val,CFS_vector_to_RS_vector(RS,cycle,x_val),RS_eps_func))
+                saddles[cycle].extend([(s_val,RS_saddles[i],RS_eps_func) for i in range(len(RS_saddles))])
     return saddles
 
+def cycle_equilibria(RS,LCC,CFS_list):
+    """
+    Return a dictionary of lists of equilibria of the cyclic feedback systems in 
+    the cyclic feedback system decomposition of RS at LCC with eps = 0. 
+
+    :param RS: RampSystem object
+    :param LCC: Cell object, required to be a loop characteristic cell.
+    :param CFS_list: output of decompose(RS,LCC)
+    :return: dictionary with entries cycle:equilibria where equilibria is a list of 
+    tuples of the form (eq_val, stable)
+    """
+    equilibria_dict = {CFS[1]:[] for CFS in CFS_list}
+    for CFS,cycle in CFS_list:
+        eq_list = CFS.equilibria()
+        for cycle_eq in eq_list:
+            if in_cell_neighborhood(LCC,cycle,cycle_eq):
+                equilibria_dict[cycle].append(cycle_eq)
+    return equilibria_dict
+
+def CFS_equilibria_to_RS_equilibria(RS,LCC,CFS_eq_dict,CFS_list):
+    """
+    Compute all the RS_equilibria defined by the equilibria in CFS_eq_dict.
+
+    :param RS: RampSystem object
+    :param LCC: Cell object which is assumed to be a loop characteristic cell
+    :param CFS_eq_dict: dictionary of cyclic feedback system equilibria. keys must be 
+    the cycles in CFS_list and values are lists of equilibria corresponding to the cycle.
+    :param CFS_list: output of decompose(RS,LCC)
+    :return: list of tuples of the form (eq_val,stable). stable is a boolean which is 
+    True if the equilibrium at eq_val is stable. 
+    """
+    reg_eq = RS.equilibria_regular_directions(LCC)
+    RS_eq_list = []
+    cycle_list = [cycle for _,cycle in CFS_list]
+    for eq_parts in itertools.product(*[CFS_eq_dict[cycle] for cycle in cycle_list]):
+        cur_eq_val = reg_eq.copy()
+        cur_eq_stable = True
+        for i in range(len(eq_parts)):
+            cycle_contribution = CFS_vector_to_RS_vector(RS,cycle_list[i],eq_parts[i][0])
+            cur_eq_val += cycle_contribution
+            if cur_eq_stable and not eq_parts[i][1]:
+                cur_eq_stable = False
+        RS_eq_list.append((cur_eq_val,cur_eq_stable))
+    return RS_eq_list
 
 
 def CFS_vector_to_RS_vector(RS,cycle,CFS_vector):
@@ -56,7 +109,7 @@ def CFS_matrix_to_RS_matrix(RS,cycle,CFS_matrix):
     positions where N = RS.Network.size()
 
     :param RS: RampSystem object
-    :param cycle: list defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
+    :param cycle: tuple defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
     :param CFS_matrix: N x N numpy array
     """
     N = RS.Network.size()
@@ -70,8 +123,46 @@ def CFS_matrix_to_RS_matrix(RS,cycle,CFS_matrix):
         RS_matrix[cycle[jplus1],cycle[j]] = CFS_matrix[jplus1,j]
     return RS_matrix
 
+def RS_matrix_to_CFS_matrix(cycle,RS_matrix):
+    """
+    Create a len(cycle) x len(cycle) numpy array CFS_matrix satisfying CFS_matrix[j+1,j] = RS_matrix[cycle[j+1],cycle[j]]
+
+    :param cycle: tuple defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
+    :param RS_matrix: square numpy array
+    :return: square numpy array of size len(cycle) x len(cycle)
+    """
+    cycle_N = len(cycle)
+    CFS_matrix = np.zeros([cycle_N,cycle_N])
+    for j in range(cycle_N-1):
+        CFS_matrix[j+1,j] = RS_matrix[cycle[j+1],cycle[j]]
+    CFS_matrix[0,-1] = RS_matrix[cycle[0],cycle[-1]]
+    return CFS_matrix
 
 
+
+def in_cell_neighborhood(tau,cycle,cycle_eq):
+    """
+    Returns True if cycle_eq_val lies in the neighborhood of loop characteristic 
+    cell tau projected onto the cycle directions and False otherwise.
+
+    :param tau: Cell object
+    :param cycle: tuple defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
+    :param cycle_eq: tuple of the form (eq_val,stable)
+    :return: bool
+    """
+    eq_val = cycle_eq[0]
+    for j in range(len(cycle)):
+        if j < len(cycle) - 1:
+            jplus1 = j + 1
+        else: 
+            jplus1 = 0
+        left = tau.theta_rho_minus(cycle[j])
+        right = tau.theta_rho_plus(cycle[j])
+        if eq_val[j] < left or eq_val[j] > right:
+            return False
+    return True 
+    
+    
 def decompose(RS,LCC):
     """
     Decompose a RampSystem into CyclicFeedbackSystems at a loop characteristic
@@ -80,8 +171,8 @@ def decompose(RS,LCC):
     :param RS: RampSystem object
     :param LCC: Loop characteristic cell represeneted as a Cell object.
     :return: list of tuples of the form (CFS,cycle) where CFS is a CyclicFeedbackSystem
-    object and cycle is the cycle in RS associated to CFS. cycle[j] is the node of RS
-    associated to node j of CFS.
+    object and cycle is a tuple representing the cycle in RS associated to CFS. 
+    cycle[j] is the node of RS associated to node j of CFS.
     """
     if not RS.is_regular():
         raise ValueError('decompose requires RampSystem parameters are regular.')
@@ -101,7 +192,7 @@ def decompose(RS,LCC):
             cur_cycle.append(cur_node)
             cur_node = rho[cur_node]
             next_node = cur_node
-        CFS_list.append((get_CFS_from_cycle(RS,cur_cycle,LCC),cur_cycle))
+        CFS_list.append((get_CFS_from_cycle(RS,cur_cycle,LCC),tuple(cur_cycle)))
     return CFS_list
 
 def get_CFS_from_cycle(RS,cycle,LCC):
@@ -110,7 +201,7 @@ def get_CFS_from_cycle(RS,cycle,LCC):
     characteristic cell defined by rho
 
     :param RS: RampSystem object
-    :param cycle: list defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
+    :param cycle: tuple defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
     :param LCC: Loop characteristic cell represeneted as a Cell object. 
     :return: CyclicFeedbackSystem object, CFS. CFS.Network node j corresponds to 
     RS.Network node cycle[j]. 
@@ -131,7 +222,7 @@ def get_cycle_L_and_Delta(RS,cycle,LCC):
     loop characteristic cell defined by rho. 
     
     :param RS: RampSystem object
-    :param cycle: list defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
+    :param cycle: tuple defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]
     Each entry should be a singular direction of LCC.
     :param LCC: Loop characteristic cell represeneted as a Cell object. 
     :return: (L,Delta), two len(cycle) x len(cycle) numpy arrays giving the L and Delta values
@@ -179,7 +270,7 @@ def get_cycle_thresholds(RS,cycle):
     Get the threshold values associated with a cycle of a ramp system. 
     
     :param RS: RampSystem object
-    :param cycle: list defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]   
+    :param cycle: tuple defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]   
     :return: numpy array of size len(cycle) x len(cycle) 
     """
     cycle_N = len(cycle)
@@ -194,13 +285,21 @@ def make_cycle_subnetwork(network,cycle):
     Create the DSGRN network described by cycle which is a subnetwork of network.
 
     :param network: DSGRN network object
-    :param cycle: list defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]   
+    :param cycle: tuple defining a cycle. The cycle is defined by cycle[0]->cycle[1] ->...->cycle[n]->cycle[0]   
     :return: DSGRN network object, cycle_net. Node j of cycle_net corresponds to node
     cycle[j] of network. All nodes are specified as inessential.
     """
-    cycle_spec = network.name(cycle[0]) + ' : ' + network.name(cycle[-1]) + '\n'
-    for j in range(len(cycle)-1):
-        cycle_spec += network.name(cycle[j+1]) + ' : ' + network.name(cycle[j]) + '\n' 
+    cycle_spec = ''
+    for j in range(len(cycle)):
+        if j > 0:
+            jminus1 = j - 1
+        else:
+            jminus1 = len(cycle) - 1
+        if not network.interaction(cycle[jminus1],cycle[j]):
+            interaction_str = '~'
+        else: 
+            interaction_str = ''
+        cycle_spec += network.name(cycle[j]) + ' : ' + interaction_str + network.name(cycle[jminus1]) + '\n' 
     return DSGRN.Network(cycle_spec)
     
 

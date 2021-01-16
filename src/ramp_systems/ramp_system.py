@@ -62,22 +62,39 @@ class RampSystem:
     # def _set_vector_field(self):
     #     self.vector_field = lambda x,eps: -self.gamma*x + self.R(x,eps)
 
-    def Lambda(self,kappa):
+    def Lambda(self,kappa,neighbor_index = None,neighbor_direction = None):
         """
-        Get value of Lambda on a cell. 
+        Get value of Lambda on a cell or neighbor of a cell.
 
         :param r: index of regular direction of cell
         :param cell: Cell object representing a cell in the cell complex. 
+        :param neighbor_index: (optional) node index. if passed, neighbor_direction must also
+        be specified. Evaluates Lambda on kappa_{neighbor_index}^{neighbor_direction}
+        :param neighbor_direction: (optional) one of -1 or 1. if passed, neighbor_index must also 
+        be specified. 
         """
         N = self.Network.size()
         test_point = np.zeros([N,1])
+        if neighbor_index is not None:
+            pi = kappa.pi.copy()
+            if neighbor_index in kappa.singular_directions():
+                if neighbor_direction == -1:
+                    pi[neighbor_index] = (kappa.rho_minus(neighbor_index), kappa(neighbor_index)[0])
+                else:
+                    pi[neighbor_index] = (kappa(neighbor_index)[0],kapppa.rho_plus(neighbor_index))
+            else:
+                if neighbor_direction == -1:
+                    pi[neighbor_index] = (kappa(neighbor_index[0]),)
+                else:
+                    pi[neighbor_index] = (kappa(neighbor_index[1]),)
+            kappa = Cell(kappa.theta,*pi)
         for r in kappa.regular_directions():
             pi_r = kappa(r)
             left = 0 if pi_r[0] == -np.inf else self.theta[pi_r[0],r]
             right = 2*left if pi_r[1] == np.inf else self.theta[pi_r[1],r]
             test_point[r] = (left + right)/2
         for s in kappa.singular_directions():
-            test_point[s] = self.theta[cell(s)[0],s]
+            test_point[s] = self.theta[kappa(s)[0],s]
         return self.R(test_point)
 
     def _set_R(self):
@@ -330,7 +347,6 @@ class RampSystem:
         """
         if eps is None:
             eps = self._zero
-
         N = self.Network.size()
         L = self.L
         Delta = self.Delta
@@ -342,10 +358,12 @@ class RampSystem:
         for j in range(N):
             for i in self.Network.outputs(j):
                 if L[i,j]<=0 or Delta[i,j]<=0 or theta[i,j]<=0:
+                    print('output',i,j)
                     return False
                 W_j = W[j][1:]
                 if gamma[j]*(theta[i,j] + eps[i,j]) in W_j or \
                     gamma[j]*(theta[i,j] - eps[i,j]) in W_j:
+                    print('input',i,j)
                     return False
         return True
 
@@ -381,25 +399,27 @@ class RampSystem:
         :param kappa: Cell object
         """
         Lambda = self.Lambda(kappa)
-        for r in kappa.regular_directions:
+        gamma = self.gamma
+        theta = self.theta
+        for r in kappa.regular_directions():
             pi_r = kappa(r)
-            left = self.gamma[r,0]*self.theta[pi_r[0],r]
-            right = self.gamma[r,0]*self.theta[pi_r[1],r]
+            left = 0 if pi_r[0] == -np.inf else gamma[r,0]*theta[pi_r[0],r]
+            right = 2*left if pi_r[1] == np.inf else self.gamma[r,0]*self.theta[pi_r[1],r]
             if Lambda[r] < left or Lambda[r] > right:
                 return False
         return True
 
-    def equilibria_regular_direction(self,kappa):
+    def equilibria_regular_directions(self,kappa):
         """
         Gives the entries of the equilibrium values for the regular directions of a cell. 
 
-        :param cell: Cell object which is assumed to be opaque. 
+        :param cell: Cell object which is assumed to be opaque: RS.is_opaque(kappa). 
         :return: N x 1 array with equilibrium of x_r' on kappa for regular directions r. 
         Entries corresponding to singular directions s are 0
         """
         Lambda = self.Lambda(kappa)
         eq = np.zeros([self.Network.size(),1])
-        for r in kappa.regular_directions:
+        for r in kappa.regular_directions():
             gamma_r = self.gamma[r,0]
             eq[r,0] = Lambda[r]/gamma_r
         return eq
