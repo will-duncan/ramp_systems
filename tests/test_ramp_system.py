@@ -15,6 +15,20 @@ def test_power_set():
 
 class TestRampModel:
 
+    def test_pstring_parser(self):
+        # only checking that it runs. That the parameters are correct needs to be
+        # checked manually. 
+        N,L,Delta,theta,gamma = self.toggle_switch_parameters()
+        par_index = 0
+        sampler = DSGRN.ParameterSampler(N)
+        pg = DSGRN.ParameterGraph(N)
+        parameter = pg.parameter(par_index)
+        sample_string = sampler.sample(parameter)
+        RS = get_ramp_system_from_parameter_string(sample_string,N)
+        assert(RS.is_regular())
+        
+
+
     def test_func_array(self):
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
         RS = RampSystem(N,L,Delta,theta,gamma)

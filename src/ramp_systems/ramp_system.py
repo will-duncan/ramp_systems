@@ -19,6 +19,59 @@ def power_set(iterable):
             yield combo
     
 
+def get_ramp_system_from_parameter_string(pstring,Network):
+    """
+    Parses the output of a DSGRN.ParameterSampler instance. 
+
+    :param pstring: Parameter string. Output of DSGRN.ParameterSampler instance.
+    :param Network: DSGRN.Network object. 
+    :return: RampSystem object. 
+    """
+    parameter_symbols = {'L','U','T'}
+    N = Network.size()
+    L = np.zeros([N,N])
+    U = np.zeros([N,N])
+    theta = np.zeros([N,N])
+    gamma = np.ones([N,1])
+    k = 0
+    while k < len(pstring):
+        #locate a parameter representation
+        if pstring[k] not in parameter_symbols:
+            k += 1
+            continue
+        cur_symbol = pstring[k]
+        #get out node name
+        out_name_start = k + 2
+        while pstring[k] != '-':
+            k += 1
+        out_name = pstring[out_name_start:k]
+        out_index = Network.index(out_name)
+        #get in node name
+        in_name_start = k + 2
+        while pstring[k] != ']':
+            k += 1
+        in_name = pstring[in_name_start:k]
+        in_index = Network.index(in_name)
+        #get the value
+        while pstring[k] != ':':
+            k += 1
+        val_start = k+2
+        while pstring[k] != ',' and pstring[k] != '}':
+            k += 1
+        val = float(pstring[val_start:k])
+        if cur_symbol == 'L':
+            L[in_index,out_index] = val
+        elif cur_symbol == 'U':
+            U[in_index,out_index] = val
+        else: #cur_symbol == 'T'
+            theta[in_index,out_index] = val
+    Delta = U - L
+    return RampSystem(Network,L,Delta,theta,gamma)
+        
+
+
+
+
 
 class RampSystem:
 
@@ -26,7 +79,7 @@ class RampSystem:
         """
         Inputs:
             Network - (_dsgrn.Network)
-            L,U,theta - (numpy array) Each is an NxN array of ramp function parameters
+            L,Delta,theta - (numpy array) Each is an NxN array of ramp function parameters
             gamma - (numpy array) Length N vector of degradation rates 
         """
         self.Network=Network
