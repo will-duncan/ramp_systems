@@ -353,7 +353,7 @@ class RampToHillSaddleMap:
         i = border_crossing_index
         s = bifurcation_pt[0]
         s_sym = sympy.symbols('s')
-        eps = eps_func.subs(s_sym,s)
+        eps = np.array(eps_func.subs(s_sym,s))
         x_ramp = bifurcation_pt[1]
         function_map = RampToHillFunctionMap(self.max_allowed_hill_coefficient)
         rho_inv = CFS.rho_inv
