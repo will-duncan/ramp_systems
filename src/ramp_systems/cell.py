@@ -114,6 +114,7 @@ class Cell:
         string = 'Cell(theta = {}'.format(self.theta)
         for pi_j in self.pi:
             string += ',' + str(pi_j)
+        string += ')'
         return string
 
     def is_regular(self):

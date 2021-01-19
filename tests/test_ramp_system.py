@@ -15,6 +15,19 @@ def test_power_set():
 
 class TestRampModel:
 
+    def test_get_all_LCCs(self):
+        RS = RampSystem(*self.almost_two_independent_toggles())
+        cells = get_all_LCCs(RS)
+        expected = [Cell(RS.theta,1,0,3,2)]
+        projections = [[1],[0],[(-np.inf,3),(3,np.inf)],[(-np.inf,2),(2,np.inf)]]
+        for projection in itertools.product(*projections):
+            expected.append(Cell(RS.theta,*projection))
+        projections = [[(-np.inf,1),(2,np.inf),(1,2)],[(-np.inf,0),(0,np.inf)],[3],[2]]
+        for projection in itertools.product(*projections):
+            expected.append(Cell(RS.theta,*projection))
+        for cell in cells:
+            assert(cell in expected)
+    
     def test_pstring_parser(self):
         # only checking that it runs. That the parameters are correct needs to be
         # checked manually. 
@@ -27,8 +40,6 @@ class TestRampModel:
         RS = get_ramp_system_from_parameter_string(sample_string,N)
         assert(RS.is_regular())
         
-
-
     def test_func_array(self):
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
         RS = RampSystem(N,L,Delta,theta,gamma)
@@ -249,4 +260,12 @@ class TestRampModel:
         Delta = np.array([[4,.5],[1.8,10]])
         theta = np.array([[11,24],[15,7]])
         gamma = np.array([1,1])
+        return N,L,Delta,theta,gamma
+
+    def almost_two_independent_toggles(self):
+        N = DSGRN.Network("X0 : ~X1 \n X1 : ~X0 \n X2 : (X0)(~X3) \n X3 : ~X2")
+        L = np.array([[0,.5,0,.0],[.5,0,0,0],[.5,0,0,.5],[0,0,.5,0]])
+        Delta = np.array([[0,1,0,0],[1,0,0,0],[1,0,0,1],[0,0,1,0]],dtype='float')
+        theta = np.array([[0,1.3,0,0],[1,0,0,0],[1,0,0,1.3],[0,0,1,0]])
+        gamma = np.array([1,1,1,1])
         return N,L,Delta,theta,gamma
