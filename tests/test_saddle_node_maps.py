@@ -47,6 +47,11 @@ class TestRampToHillSaddleMap:
         assert(np.allclose(hill_system.L[0,1],.6560,rtol = 1e-2))
         assert(np.allclose(hill_system.L[1,0],.5981,rtol = 1e-2))
         assert(np.allclose(x_hill,np.array([[.7958],[1.5098],[L[3,2]+Delta[3,2]],[L[2,3]]]),rtol=1e-2))
+        #make sure no arrays were changed
+        assert(np.array_equal(RS.theta,theta))
+        assert(np.array_equal(RS.L,L))
+        assert(np.array_equal(RS.Delta,Delta))
+        assert(np.array_equal(RS.gamma,gamma))
 
         #toggle plus multiplicative interactions
         N,L,Delta,theta,gamma = self.toggle_plus_multiplicative()

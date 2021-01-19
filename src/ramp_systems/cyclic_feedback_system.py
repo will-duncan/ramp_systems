@@ -230,7 +230,7 @@ class CyclicFeedbackSystem(RampSystem):
             # is a double root. 
             root_int, num_roots = candidates.pop()
             a,b = root_int
-            if a == b and a == 0:
+            if a == 0:
                 continue
             a = float(a)
             b = float(b)
@@ -257,7 +257,6 @@ class CyclicFeedbackSystem(RampSystem):
         N = self.Network.size()
         rho = self.rho
         x = np.array(x).reshape([N,1])
-        
         theta_vec = np.zeros([N,1])
         eps_vec = np.zeros([N,1])
         for i in range(N):

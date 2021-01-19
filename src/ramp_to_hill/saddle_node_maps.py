@@ -228,6 +228,7 @@ class RampToHillSaddleMap:
                 for saddle in saddles_dict[cycle]:
                     stable = saddle[1][1]
                     if only_stable and not stable:
+                        print('Found saddle node did not involve a stable equilibrium.')
                         continue
                     cur_sys, cur_x_hill = self.ramp_system_map(RS,saddle,cycle,LCC)
                     if cur_sys is not None: 
@@ -240,7 +241,8 @@ class RampToHillSaddleMap:
     def ramp_system_map(self,RS,saddle,cycle,LCC):
         """
         Maps a ramp system saddle to a hill system saddle. Returns None,None if 
-        the off cycle x values are no longer equilibrium values after the map is applied.
+        the off cycle x values are no longer equilibrium values after the map is applied or
+        if any L values for the hill system are less than 0.
 
         :param RS: RampSystem object
         :param saddle: tuple of the form (s_val,(x_val,stable),eps_func,border_crossing_index)
@@ -254,16 +256,25 @@ class RampToHillSaddleMap:
         s_val = saddle[0]
         x_val, stable = saddle[1]
         eps_func = saddle[2]
+        s = sympy.symbols('s')
+        eps = eps_func.subs(s,1)
+        eps = np.array(eps)
+        eps = decomposition.RS_matrix_to_CFS_matrix(cycle,eps)
+        eps_func = sympy.Matrix(eps)*s
         border_crossing_index = saddle[3]
         
         x_val_cycle = decomposition.RS_vector_to_CFS_vector(cycle,x_val)
         hill_CFS, x_CFS = self.cyclic_feedback_system_map(CFS,(s_val,x_val_cycle),eps_func,border_crossing_index)
         L = self.get_hill_L_from_CFS(hill_CFS,RS,cycle,LCC)
+        if sum(sum(L<=0)) > 0:
+            print('L < 0 found.')
+            return None,None
         n = self.get_n_from_CFS(hill_CFS,cycle)
         sign = self.get_sign_from_RS(RS)
         x_hill = decomposition.CFS_vector_to_RS_vector(RS,cycle,x_CFS,x_val)
         hill_sys = HillSystemParameter(self.Network,sign,L,RS.Delta,RS.theta,n,RS.gamma)
         if not hill_sys.is_equilibrium(x_hill):
+            print('Mapped x is not an equilibrium.')
             return None,None
         return hill_sys, x_hill
 
@@ -284,7 +295,7 @@ class RampToHillSaddleMap:
     def get_hill_L_from_CFS(self,hill_CFS,RS,cycle,LCC):
         Network = RS.Network
         ramp_functions = RS.func_array
-        hill_L = RS.L
+        hill_L = RS.L.copy()
         for j in range(len(cycle)):
             if j < len(cycle)-1:
                 jplus1 = j+1
@@ -394,6 +405,7 @@ class RampToHillSaddleMap:
             while f(upper_bound) > 0:
                 upper_bound *= 100
             interval = [x_star[i],100*x_star[i]] 
+        print(interval,f(interval[0]),f(interval[1]))
         x_hill[i,0] = bisect(f,interval[0],interval[1])
 
         L_hill = np.zeros([N,N])

@@ -184,6 +184,7 @@ def decompose(RS,LCC):
     cycle[j] is the node of RS associated to node j of CFS.
     """
     if not RS.is_regular():
+        print(RS)
         raise ValueError('decompose requires RampSystem parameters are regular.')
     if not np.array_equal(RS.theta,LCC.theta):
         raise ValueError('theta for RS and LCC must agree.')
