@@ -493,7 +493,6 @@ class RampSystem:
                 W_j = W[j][1:]
                 if gamma[j]*(theta[i,j] + eps[i,j]) in W_j or \
                     gamma[j]*(theta[i,j] - eps[i,j]) in W_j:
-                    print(i,j,self)
                     return False
         return True
 

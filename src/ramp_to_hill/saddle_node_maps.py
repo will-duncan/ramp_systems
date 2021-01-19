@@ -6,6 +6,7 @@ To do: implement the map for networks which are not cyclic feedback networks.
  
     Author: William Duncan
 
+TO DO: fix _get_x_jk. 
 """
 
 
@@ -266,7 +267,7 @@ class RampToHillSaddleMap:
         x_val_cycle = decomposition.RS_vector_to_CFS_vector(cycle,x_val)
         hill_CFS, x_CFS = self.cyclic_feedback_system_map(CFS,(s_val,x_val_cycle),eps_func,border_crossing_index)
         L = self.get_hill_L_from_CFS(hill_CFS,RS,cycle,LCC)
-        if sum(sum(L<=0)) > 0:
+        if sum(sum(L<0)) > 0:
             print('L < 0 found.')
             return None,None
         n = self.get_n_from_CFS(hill_CFS,cycle)
@@ -405,7 +406,6 @@ class RampToHillSaddleMap:
             while f(upper_bound) > 0:
                 upper_bound *= 100
             interval = [x_star[i],100*x_star[i]] 
-        print(interval,f(interval[0]),f(interval[1]))
         x_hill[i,0] = bisect(f,interval[0],interval[1])
 
         L_hill = np.zeros([N,N])
@@ -426,6 +426,8 @@ class RampToHillSaddleMap:
         """
         Get x_j^k as defined in the write up. 
 
+        TO DO: need to adjust choice of x_j^k based on choice of x_{j-1}^k. Just
+        because F'(x_j^*)*prod(F(x_j^*)) > prod(gamma) doesn't mean prod(F'(x_j_bar))*F'(x_i^*)>prod(gamma)
         Inputs:
             max_slope_list - (numpy array)
             gamma_product - product of the gamma[j]

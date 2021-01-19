@@ -38,6 +38,12 @@ class TestRampToHillSaddleMap:
         saddles = decomposition.get_saddles(RS,LCC)
         saddle = saddles[(0,1)][0]
         hill_system, x_hill = the_map.ramp_system_map(RS,saddle,(0,1),LCC)
+        #make sure no arrays were changed
+        assert(np.array_equal(RS.theta,theta))
+        assert(np.array_equal(RS.L,L))
+        assert(np.array_equal(RS.Delta,Delta))
+        assert(np.array_equal(RS.gamma,gamma))
+        #check output
         assert(np.array_equal(hill_system.n[2:4,2:4], np.array([[0,np.inf],[np.inf,0]])))
         assert(np.array_equal(hill_system.Delta,Delta))
         assert(np.array_equal(hill_system.gamma,gamma))
@@ -47,11 +53,7 @@ class TestRampToHillSaddleMap:
         assert(np.allclose(hill_system.L[0,1],.6560,rtol = 1e-2))
         assert(np.allclose(hill_system.L[1,0],.5981,rtol = 1e-2))
         assert(np.allclose(x_hill,np.array([[.7958],[1.5098],[L[3,2]+Delta[3,2]],[L[2,3]]]),rtol=1e-2))
-        #make sure no arrays were changed
-        assert(np.array_equal(RS.theta,theta))
-        assert(np.array_equal(RS.L,L))
-        assert(np.array_equal(RS.Delta,Delta))
-        assert(np.array_equal(RS.gamma,gamma))
+        
 
         #toggle plus multiplicative interactions
         N,L,Delta,theta,gamma = self.toggle_plus_multiplicative()
@@ -155,6 +157,26 @@ class TestRampToHillSaddleMap:
         assert(np.allclose(hill_sys_parameter.L[1,0],.5922,rtol = 1e-4))
         assert(np.allclose(x_hill,np.array([[.82535],[1.58024]])))
 
+        #three node map
+        N,L,Delta,theta,gamma = self.three_node_network()
+        CFS = CyclicFeedbackSystem(N,L,Delta,theta,gamma)
+        saddles,eps_func = CFS.get_bifurcations()
+        assert(len(saddles[0]) == 0)
+        assert(len(saddles[1]) == 1)
+        assert(len(saddles[2]) == 0)
+        assert(len(saddles[3]) == 0)
+        saddle = saddles[1][0]
+        s_val = saddle[0]
+        x = saddle[1]
+        assert(np.allclose(s_val,.292402,rtol= 1e-2))
+        assert(np.allclose(x,np.array([[1.171],[1.292402],[1.5]]),rtol = 1e-3))
+        the_map = RampToHillSaddleMap(N)
+        hill_saddles = the_map.map_all_saddles(CFS)
+        assert(len(hill_saddles) == 1)
+        hill_sys = hill_saddles[0][0]
+        x_hill = hill_saddles[0][1]
+        assert(hill_sys.is_saddle(x_hill))
+
 
 
     
@@ -209,4 +231,12 @@ class TestRampToHillSaddleMap:
         Delta = np.array([[0,1,0,0],[1,0,0,0],[1,0,0,1],[0,0,1,0]],dtype='float')
         theta = np.array([[0,1.3,0,0],[1,0,0,0],[2,0,0,1.3],[0,0,1.1,0]])
         gamma = np.array([[1],[1],[1],[1]])
+        return N,L,Delta,theta,gamma
+
+    def three_node_network(self):
+        N = DSGRN.Network("X0: X2 \n X1 : X0 \n X2 : X1")
+        L = np.array([[0,0,.5],[.5,0,0],[0,.5,0]])
+        Delta = np.array([[0,0,1],[1,0,0],[0,1,0]])
+        theta = [[0,0,1.4],[1,0,0],[0,1,0]]
+        gamma = np.array([[1],[1],[1]])
         return N,L,Delta,theta,gamma
