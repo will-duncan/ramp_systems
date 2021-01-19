@@ -57,7 +57,8 @@ class TestRampToHillSaddleMap:
         saddle = saddles[(0,1)][0]
         hill_saddles = the_map.map_all_saddles(RS,LCC)
         assert(len(hill_saddles[(0,1)]) == 1)
-        hill_system,x_hill = hill_saddles[(0,1)][0]
+        hill_system,x_hill,stable = hill_saddles[(0,1)][0]
+        assert(stable == True)
         assert(np.array_equal(hill_system.Delta,Delta))
         assert(np.array_equal(hill_system.gamma,gamma))
         assert(np.array_equal(hill_system.theta,theta))

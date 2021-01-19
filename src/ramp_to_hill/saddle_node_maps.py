@@ -191,7 +191,7 @@ class RampToHillSaddleMap:
         self.monotone_function = monotone_function
 
 
-    def map_all_saddles(self,RS,LCC = None):
+    def map_all_saddles(self,RS,LCC = None,only_stable = True):
         """
         Compute all saddle points for the ramp system RS at a loop characteristic cell
         and map each to a Hill system saddle. Uses eps = Delta*s for the parameterization of eps.
@@ -200,9 +200,13 @@ class RampToHillSaddleMap:
             RS - RampSystem class instance
             LCC - Cell object representing a loop characteristic cell. Required if RS
                   is not a CyclicFeedbackSystem and ignored if it is. 
+            only_stable - (optional, default = True) If True, only returns the saddles that
+                  involve a stable equilibrium
         Output:
-            hill_systems - list of hill systems. hill_systems[j] has a saddle at x_hill_pts[j]
-            x_hill_pts - list of x values at which the corresponding hill system has a saddle
+            hill_saddles - if RS is a CyclicFeedbackSystem, hill_saddles is a list 
+                of tuples of the form (hill_sys,x_hill). If RS is a RampSystem, hill_saddles
+                is a dictionary with keys given by the cycles at the loop characteristic cell LCC.
+                The hill_saddles[cycle] is a list of tuples of the form (hill_sys,x_hill,stable).
         """
         
         if isinstance(RS,CyclicFeedbackSystem):
@@ -222,9 +226,12 @@ class RampToHillSaddleMap:
             hill_saddles = {cycle:[] for cycle in saddles_dict}
             for cycle in saddles_dict:
                 for saddle in saddles_dict[cycle]:
+                    stable = saddle[1][1]
+                    if only_stable and not stable:
+                        continue
                     cur_sys, cur_x_hill = self.ramp_system_map(RS,saddle,cycle,LCC)
                     if cur_sys is not None: 
-                        hill_saddles[cycle].append((cur_sys,cur_x_hill))                   
+                        hill_saddles[cycle].append((cur_sys,cur_x_hill,stable))                   
         return hill_saddles
 
 
