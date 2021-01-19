@@ -101,6 +101,8 @@ class TestRampToHillSaddleMap:
         saddle = saddles[(0,1)][0]
         hill_system,x_hill = the_map.ramp_system_map(RS,saddle,(0,1),LCC)
         assert(np.allclose(x_hill,np.array([[.7958],[1.5098],[L[3,2]+Delta[3,2]],[L[2,3]]]),rtol=1e-2))
+        assert(hill_system.is_equilibrium(x_hill))
+        assert(hill_system.is_saddle(x_hill))
 
 
     def test_cyclic_feedback_system_map(self):

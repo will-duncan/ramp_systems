@@ -40,6 +40,9 @@ class HillParameter:
     def func_value(self,x):
         return hill_value(x,self)
 
+    def dx_value(self,x):
+        return self.sign*hill_derivative_magnitude(x,self)
+
 
 
 class HillSystemParameter:
@@ -83,7 +86,7 @@ class HillSystemParameter:
                 for j in source_set:
                     cur_param = self.hill_parameter(i,j)
                     cur_sum += cur_param.func_value(x[j])
-                cur_prod = cur_prod*cur_sum
+                cur_prod *= cur_sum
             val[i,0] = cur_prod
         return val
 
@@ -91,6 +94,35 @@ class HillSystemParameter:
         N = self.Network.size()
         x = np.array(x).reshape([N,1])
         return np.allclose(self.sys_value(x)-self.gamma*x,np.zeros([N,1]),atol=tol)
+
+    def Jacobian(self,x):
+        N = self.Network.size()
+        J = np.diag(-self.gamma[:,0])
+        for i in range(N):
+            for j in self.Network.inputs(i):
+                cur_prod = 1
+                for source_set in self.Network.logic(i):
+                    cur_sum = 0
+                    if j in source_set:
+                        cur_sum = self.hill_parameter(i,j).dx_value(x[j])
+                    else:
+                        for k in source_set:
+                            cur_sum += self.hill_parameter(i,k).func_value(x[k])
+                cur_prod *= cur_sum
+            J[i,j] += cur_prod
+        return j
+
+
+    def is_saddle(self,x,tol = 1e-4):
+        N = self.Network.size()
+        x = np.array(x).reshape([N,1])
+        if not self.is_equilibrium(x,tol=tol):
+            return False
+        J = self.Jacobian(x)
+        if np.linalg.matrix_rank(J) == N:
+            return False
+        return True
+        
             
 
 def hill_value(x,hill_parameter):
@@ -132,6 +164,11 @@ def hill_derivative_magnitude(x,*args):
     else: 
         raise TypeError('hill_derivative() takes 1 or 4 positiional arguments\
             but {} were given.'.format(len(args)))
+    if n == np.inf:
+        if theta == x:
+            return np.inf
+        else: 
+            return 0
     return Delta*n/(theta*(theta/x)**(n-1) + 2*x + x*(x/theta)**n)
 
 
