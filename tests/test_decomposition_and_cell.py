@@ -37,14 +37,9 @@ def test_get_saddles():
     Delta[2,0] = .5
     theta[3,2] = 1.1
     RS = RampSystem(N,L,Delta,theta,gamma)
-    print(RS.Delta,Delta)
     LCC.theta = RS.theta
     saddles = get_saddles(RS,LCC)
     assert(len(saddles[(0,1)]) == 1)
-    
-
-    
-
 
 def test_decompose():
     RS = RampSystem(*toggle_plus_parameters())

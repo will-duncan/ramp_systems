@@ -13,6 +13,7 @@ from scipy.optimize import bisect
 import numpy as np
 from ramp_systems.cyclic_feedback_system import DEFAULT_TOLERANCE, CyclicFeedbackSystem
 import sympy
+import ramp_systems.decomposition as decomposition
 
 class HillParameter:
 
@@ -35,6 +36,10 @@ class HillParameter:
         theta = self.theta
         n = self.n
         return 'HillParameter({},{},{},{},{})'.format(sign,L,Delta,theta,n)
+
+    def func_value(self,x):
+        return hill_value(x,self)
+
 
 
 class HillSystemParameter:
@@ -62,6 +67,31 @@ class HillSystemParameter:
         else: 
             return False
     
+
+    def hill_parameter(self,i,j):
+        return HillParameter(self.sign[i,j],self.L[i,j],self.Delta[i,j],self.theta[i,j],self.n[i,j])
+
+
+    def sys_value(self,x):
+        Network = self.Network
+        N = Network.size()
+        val = np.zeros([N,1])
+        for i in range(N):
+            cur_prod = 1
+            for source_set in Network.logic(i):
+                cur_sum = 0
+                for j in source_set:
+                    cur_param = self.hill_parameter(i,j)
+                    cur_sum += cur_param.func_value(x[j])
+                cur_prod = cur_prod*cur_sum
+            val[i,0] = cur_prod
+        return val
+
+    def is_equilibrium(self,x,tol = 1e-4):
+        N = self.Network.size()
+        x = np.array(x).reshape([N,1])
+        return np.allclose(self.sys_value(x)-self.gamma*x,np.zeros([N,1]),atol=tol)
+            
 
 def hill_value(x,hill_parameter):
     sign = hill_parameter.sign
@@ -123,39 +153,139 @@ class RampToHillSaddleMap:
         self.Network = Network
         self.monotone_function = monotone_function
 
-    def __call__(self, RS, eps_func = None):
-        return self.map_all_saddles(RS,eps_func)
 
-    def map_all_saddles(self,RS,eps_func = None):
+    def map_all_saddles(self,RS,LCC = None):
         """
-        Compute all saddle points for the ramp system RS and map each to a Hill
-        system saddle. 
+        Compute all saddle points for the ramp system RS at a loop characteristic cell
+        and map each to a Hill system saddle. Uses eps = Delta*s for the parameterization of eps.
 
         Input:
             RS - RampSystem class instance
+            LCC - Cell object representing a loop characteristic cell. Required if RS
+                  is not a CyclicFeedbackSystem and ignored if it is. 
         Output:
             hill_systems - list of hill systems. hill_systems[j] has a saddle at x_hill_pts[j]
             x_hill_pts - list of x values at which the corresponding hill system has a saddle
         """
-        hill_systems = []
-        x_hill_pts = []
+        
         if isinstance(RS,CyclicFeedbackSystem):
             if RS.cfs_sign == 1:
-                saddles, eps_func = RS.get_bifurcations(eps_func)
+                hill_saddles = []
+                saddles, eps_func = RS.get_bifurcations()
                 for i in range(len(saddles)):
                     for saddle in saddles[i]:
                         cur_sys, cur_x_hill = self.cyclic_feedback_system_map(RS,saddle,eps_func,i)
-                        hill_systems.append(cur_sys)
-                        x_hill_pts.append(cur_x_hill)
+                        hill_saddles.append((cur_sys,cur_x_hill))
             else:
                 raise ValueError('A negative cyclic feedback system was passed to map_all_saddles() but only positive CFSs have saddles.')
         else:
-            raise ValueError('The ramp to hill saddle map is currently only implemented for CyclicFeedbackSystems.')
+            if LCC is None:
+                raise ValueError('map_all_saddles requires a loop characteristic cell to be passed if RS is a RampSystem.')
+            saddles_dict = decomposition.get_saddles(RS,LCC)
+            hill_saddles = {cycle:[] for cycle in saddles_dict}
+            for cycle in saddles_dict:
+                for saddle in saddles_dict[cycle]:
+                    cur_sys, cur_x_hill = self.ramp_system_map(RS,saddle,cycle,LCC)
+                    if cur_sys is not None: 
+                        hill_saddles[cycle].append((cur_sys,cur_x_hill))                   
+        return hill_saddles
 
-        return hill_systems, x_hill_pts
+
+    
+    
+    def ramp_system_map(self,RS,saddle,cycle,LCC):
+        """
+        Maps a ramp system saddle to a hill system saddle. Returns None,None if 
+        the off cycle x values are no longer equilibrium values after the map is applied.
+
+        :param RS: RampSystem object
+        :param saddle: tuple of the form (s_val,(x_val,stable),eps_func,border_crossing_index)
+        :param cycle: list defining a cycle. The cycle is given by cycle[0]->cycle[1]->...->cycle[-1]->cycle[0]
+        :param LCC: Loop characteristic cell represented by a Cell object
+        :return: hill_sys, x_CFS. hill_sys is a HillSystemParameter object, and x_CFS
+        is a len(cycle) x 1 numpy array giving the x values for the cycle direction
+        """
+        CFS = decomposition.get_CFS_from_cycle(RS,cycle,LCC)
+        #unpack saddle
+        s_val = saddle[0]
+        x_val, stable = saddle[1]
+        eps_func = saddle[2]
+        border_crossing_index = saddle[3]
+        
+        x_val_cycle = decomposition.RS_vector_to_CFS_vector(cycle,x_val)
+        hill_CFS, x_CFS = self.cyclic_feedback_system_map(CFS,(s_val,x_val_cycle),eps_func,border_crossing_index)
+        L = self.get_hill_L_from_CFS(hill_CFS,RS,cycle,LCC)
+        n = self.get_n_from_CFS(hill_CFS,cycle)
+        sign = self.get_sign_from_RS(RS)
+        x_hill = decomposition.CFS_vector_to_RS_vector(RS,cycle,x_CFS,x_val)
+        hill_sys = HillSystemParameter(self.Network,sign,L,RS.Delta,RS.theta,n,RS.gamma)
+        if not hill_sys.is_equilibrium(x_hill):
+            return None,None
+        return hill_sys, x_hill
 
 
 
+
+    def get_sign_from_RS(self,RS):
+        N = RS.Network.size()
+        sign = np.zeros([N,N])
+        for i in range(N):
+            for j in RS.Network.inputs(i):
+                if RS.Network.interaction(j,i):
+                    sign[i,j] = 1
+                else:
+                    sign[i,j] = -1
+        return sign
+
+    def get_hill_L_from_CFS(self,hill_CFS,RS,cycle,LCC):
+        Network = RS.Network
+        ramp_functions = RS.func_array
+        hill_L = RS.L
+        for j in range(len(cycle)):
+            if j < len(cycle)-1:
+                jplus1 = j+1
+            else:
+                jplus1 = 0
+            hill_CFS_L = hill_CFS.L[jplus1,j]
+            left_test_point = RS.get_cell_test_point(LCC,cycle[j],-1)
+            right_test_point = RS.get_cell_test_point(LCC,cycle[j],1)
+            Lambda_left = RS.R(left_test_point)[cycle[jplus1]]
+            Lambda_right = RS.R(right_test_point)[cycle[jplus1]]
+            if Lambda_left < Lambda_right:
+                ramp_CFS_L = Lambda_left
+                test_point = left_test_point
+            else:
+                ramp_CFS_L = Lambda_right
+                test_point = right_test_point
+            for source_set in Network.logic(cycle[jplus1]):
+                if cycle[j] not in source_set:
+                    cur_sum = 0
+                    for source in source_set:
+                        cur_sum += ramp_functions(test_point)[cycle[jplus1],source]
+                    hill_CFS_L /= cur_sum
+                else:
+                    j_partition = source_set
+            for source in j_partition:
+                if source != cycle[j]:
+                    hill_CFS_L -= ramp_functions(test_point)[cycle[jplus1],source]
+            hill_L[cycle[jplus1],cycle[j]] = hill_CFS_L
+        return hill_L
+
+
+    def get_n_from_CFS(self,hill_CFS,cycle):
+        Network = self.Network
+        N = Network.size()
+        n = np.zeros([N,N])
+        for i in range(N):
+            for j in Network.inputs(i):
+                n[i,j] = np.inf
+        for j in range(len(cycle)):
+            if j < len(cycle) - 1:
+                jplus1 = j+1
+            else:
+                jplus1 = 0
+            n[cycle[jplus1],cycle[j]] = hill_CFS.n[jplus1,j]
+        return n
 
     def cyclic_feedback_system_map(self,CFS,bifurcation_pt,eps_func,border_crossing_index):
         """
@@ -195,7 +325,6 @@ class RampToHillSaddleMap:
         max_slope_list = np.array(max_slope_list)
 
         #compute x_hill, the x value of the saddle node for the hill system
-        N = self.Network.size()
         x_hill = np.zeros([N,1])
         g = self.monotone_function
         for j in range(N):

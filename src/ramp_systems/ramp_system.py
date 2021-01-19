@@ -59,9 +59,6 @@ class RampSystem:
         x = np.array(x).reshape([self.Network.size(),1])
         return -self.gamma*x + self.R(x,eps)
 
-    # def _set_vector_field(self):
-    #     self.vector_field = lambda x,eps: -self.gamma*x + self.R(x,eps)
-
     def Lambda(self,kappa,neighbor_index = None,neighbor_direction = None):
         """
         Get value of Lambda on a cell or neighbor of a cell.
@@ -72,7 +69,13 @@ class RampSystem:
         be specified. Evaluates Lambda on kappa_{neighbor_index}^{neighbor_direction}
         :param neighbor_direction: (optional) one of -1 or 1. if passed, neighbor_index must also 
         be specified. 
+        :return: Network.size() x 1 numpy array 
         """
+        N = self.Network.size()
+        test_point = self.get_cell_test_point(kappa,neighbor_index,neighbor_direction)
+        return self.R(test_point)
+
+    def get_cell_test_point(self,kappa,neighbor_index = None,neighbor_direction = None):
         N = self.Network.size()
         test_point = np.zeros([N,1])
         if neighbor_index is not None:
@@ -81,7 +84,7 @@ class RampSystem:
                 if neighbor_direction == -1:
                     pi[neighbor_index] = (kappa.rho_minus(neighbor_index), kappa(neighbor_index)[0])
                 else:
-                    pi[neighbor_index] = (kappa(neighbor_index)[0],kapppa.rho_plus(neighbor_index))
+                    pi[neighbor_index] = (kappa(neighbor_index)[0],kappa.rho_plus(neighbor_index))
             else:
                 if neighbor_direction == -1:
                     pi[neighbor_index] = (kappa(neighbor_index[0]),)
@@ -95,7 +98,7 @@ class RampSystem:
             test_point[r] = (left + right)/2
         for s in kappa.singular_directions():
             test_point[s] = self.theta[kappa(s)[0],s]
-        return self.R(test_point)
+        return test_point
 
     def _set_R(self):
         """
@@ -358,12 +361,12 @@ class RampSystem:
         for j in range(N):
             for i in self.Network.outputs(j):
                 if L[i,j]<=0 or Delta[i,j]<=0 or theta[i,j]<=0:
-                    print('output',i,j)
+                    return False
+                if sum(theta[i,:] == theta[i,j]) > 1:
                     return False
                 W_j = W[j][1:]
                 if gamma[j]*(theta[i,j] + eps[i,j]) in W_j or \
                     gamma[j]*(theta[i,j] - eps[i,j]) in W_j:
-                    print('input',i,j)
                     return False
         return True
 
@@ -423,3 +426,6 @@ class RampSystem:
             gamma_r = self.gamma[r,0]
             eq[r,0] = Lambda[r]/gamma_r
         return eq
+
+    def __repr__(self):
+        return 'RampSystem(Network = {},L = {},Delta = {},theta = {},gamma = {})'.format(self.Network.specification(),self.L,self.Delta,self.theta,self.gamma)

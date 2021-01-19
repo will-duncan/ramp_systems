@@ -11,15 +11,16 @@ from ramp_systems.cell import Cell
 
 
 
+
 def get_saddles(RS,LCC):
     """
-    Get all the saddle nodes that occur at a loop characteristic cell and are associated 
-    with cycle while (Z,eps) is weakly equivalent to (Z,0). Uses a parameterization 
+    Get all the saddle nodes that occur at a loop characteristic cell 
+    while (Z,eps) is weakly equivalent to (Z,0). Uses a parameterization 
     of eps that keeps all slopes constant within the cyclic feedback system. 
 
     :param RS: RampSystem object
     :param LCC: Cell object corresponding to a loop characteristic cell of RS.
-    :return: list of tuples of the form (s_val,(saddle_val,stable),eps_func)
+    :return: list of tuples of the form (s_val,(x_val,stable),eps_func,border_crossing_index)
     """
     CFS_list = decompose(RS,LCC)
     saddles = {CFS[1]:[] for CFS in CFS_list}
@@ -32,21 +33,20 @@ def get_saddles(RS,LCC):
             #negative CFSs don't have saddle nodes
             continue
         saddle_points, eps_func = CFS.get_bifurcations()
-        #flatten saddle_points
-        saddle_points = [saddles for j in range(len(saddles)) for saddles in saddle_points[j]]
         CFS_eps_matrix = np.array(eps_func.subs(s,1))
         RS_eps_matrix = CFS_matrix_to_RS_matrix(RS,cycle,CFS_eps_matrix)
-        for s_val, x_val in saddle_points:
-            eps = RS_eps_matrix*s_val
-            if RS.is_weakly_equivalent(eps):
-                saddle_dict = equilibria_dict.copy()
-                # get off cycle equilibria. stable set to True for this x_val
-                # is a hack so that CFS_equilibria_RS_equilibria gives stable == True
-                # when the off cycle equilibrium is stable. 
-                saddle_dict[cycle] = [(x_val,True)] 
-                RS_saddles = CFS_equilibria_to_RS_equilibria(RS,LCC,saddle_dict,CFS_list)
-                RS_eps_func = sympy.Matrix(RS_eps_matrix)*s
-                saddles[cycle].extend([(s_val,RS_saddles[i],RS_eps_func) for i in range(len(RS_saddles))])
+        for j in range(len(saddle_points)):
+            for s_val, x_val in saddle_points[j]:
+                eps = RS_eps_matrix*s_val
+                if RS.is_weakly_equivalent(eps):
+                    saddle_dict = equilibria_dict.copy()
+                    # get off cycle equilibria. stable set to True for this x_val
+                    # is a hack so that CFS_equilibria_RS_equilibria gives stable == True
+                    # when the off cycle equilibrium is stable. 
+                    saddle_dict[cycle] = [(x_val,True)] 
+                    RS_saddles = CFS_equilibria_to_RS_equilibria(RS,LCC,saddle_dict,CFS_list)
+                    RS_eps_func = sympy.Matrix(RS_eps_matrix)*s
+                    saddles[cycle].extend([(s_val,RS_saddles[i],RS_eps_func,j) for i in range(len(RS_saddles))])
     return saddles
 
 def cycle_equilibria(RS,LCC,CFS_list):
@@ -95,13 +95,22 @@ def CFS_equilibria_to_RS_equilibria(RS,LCC,CFS_eq_dict,CFS_list):
     return RS_eq_list
 
 
-def CFS_vector_to_RS_vector(RS,cycle,CFS_vector):
+def CFS_vector_to_RS_vector(RS,cycle,CFS_vector,off_cycle_vec = None):
     N = RS.Network.size()
-    RS_vector = np.zeros([N,1])
+    if off_cycle_vec is None:
+        RS_vector = np.zeros([N,1])
+    else: 
+        RS_vector = off_cycle_vec
     cycle_N = len(cycle)
     for j in range(cycle_N):
         RS_vector[cycle[j],0] = CFS_vector[j,0]
     return RS_vector
+
+def RS_vector_to_CFS_vector(cycle,RS_vector):
+    CFS_vector = np.zeros([len(cycle),1])
+    for j in range(len(cycle)):
+        CFS_vector[j,0] = RS_vector[cycle[j],0]
+    return CFS_vector
 
 def CFS_matrix_to_RS_matrix(RS,cycle,CFS_matrix):
     """
@@ -231,39 +240,20 @@ def get_cycle_L_and_Delta(RS,cycle,LCC):
     cycle_N = len(cycle)
     cycle_L = np.zeros([cycle_N,cycle_N])
     cycle_Delta = np.zeros([cycle_N,cycle_N])
-    test_point = np.zeros([RS.Network.size(),1])
-    theta = RS.theta
-    for r in LCC.regular_directions():
-        theta_low = 0 if LCC(r)[0] == -np.inf else theta[LCC(r)[0],r]
-        theta_high = 2*theta_low if LCC(r)[1] == np.inf else theta[LCC(r)[1],r]
-        test_point[r,0] = (theta_low + theta_high)/2
-    for s in LCC.singular_directions():
-        test_point[s,0] = theta[LCC(s)[0],s]
     for j in range(cycle_N):
         if j < cycle_N - 1:
             jplus1 = j+1
         else: 
             jplus1 = 0
-        low_test_point = test_point.copy()
-        low_test_point[cycle[j]] = (theta[cycle[jplus1],cycle[j]] + LCC.theta_rho_minus(cycle[j]))/2
-        Lambda_low = RS.R(low_test_point)[cycle[jplus1]]
-        high_test_point = test_point.copy()
-        theta_rho_plus = LCC.theta_rho_plus(cycle[j])
-        if theta_rho_plus == np.inf:
-            high_test_point[cycle[j]] = 2*theta[cycle[jplus1],cycle[j]]
-        else: 
-            high_test_point[cycle[j]] = (theta[cycle[jplus1],cycle[j]] + theta_rho_plus)/2
-        Lambda_high = RS.R(high_test_point)[cycle[jplus1]]
-        if Lambda_low < Lambda_high:
-            cycle_L[jplus1,j] = Lambda_low
-            cycle_Delta[jplus1,j] = Lambda_high - Lambda_low
+        Lambda_left = RS.Lambda(LCC,cycle[j],-1)[cycle[jplus1]]
+        Lambda_right = RS.Lambda(LCC,cycle[j],1)[cycle[jplus1]]
+        if Lambda_left < Lambda_right:
+            cycle_L[jplus1,j] = Lambda_left
+            cycle_Delta[jplus1,j] = Lambda_right - Lambda_left
         else:
-            cycle_L[jplus1,j] = Lambda_high
-            cycle_Delta[jplus1,j] = Lambda_low - Lambda_high
-    return cycle_L, cycle_Delta
-    
-        
-
+            cycle_L[jplus1,j] = Lambda_right
+            cycle_Delta[jplus1,j] = Lambda_left - Lambda_right
+    return cycle_L,cycle_Delta
 
 def get_cycle_thresholds(RS,cycle):
     """
