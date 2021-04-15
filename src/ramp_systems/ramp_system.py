@@ -324,10 +324,11 @@ class RampSystem:
             W_j - (list) output of get_W_j(j)
         Output:
             B_jp - (list) indices of thresholds that lie between W_j[p] and W_j[p-1] 
+                   ordered by the threshold order. 
         """
         theta = self.theta
         Network = self.Network
-        B_jp = [i for i in Network.outputs(j) if (theta[i,j] > W_j[p-1] and theta[i,j]<W_j[p])]
+        B_jp = [i for i in self.theta_order(j) if (theta[i,j] > W_j[p-1] and theta[i,j]<W_j[p])]
         return B_jp
 
     def _get_B_j(self,j,W_j):
@@ -397,6 +398,9 @@ class RampSystem:
                     return False
         return True
 
+    ##################################
+    # Optimal eps
+    ##################################
 
     def _get_eps_jp(self,j,W_j,B_j,p):
         """
@@ -467,6 +471,132 @@ class RampSystem:
             eps += self._get_eps_j(j,W[j],B[j])
         return eps
             
+    ###################################
+    # optimal theta
+    ###################################
+    def get_D_jp(self,j,W_j,B_j,p):
+        """
+        Input:
+            j - (int) index of a node
+            W_j - (list) output of get_W_j(j)
+            B_j - (list of lists) output of get_B_j(j,W_j)
+            p - (int) requires 0<p<len(W_j)-1
+        """
+        if B_j[p] == []:
+            return np.inf
+        Delta = self.Delta
+        gamma = self.gamma
+        if p == 1:
+            Delta_sum = sum([Delta[i,j] for i in B_j[p][1:]])
+            D_jp = W_j[p]/(gamma[j]*(Delta[B_j[p][0],j] + 2*Delta_sum))
+        else:
+            Delta_sum = sum([Delta[i,j] for i in B_j[p]])
+            D_jp = (W_j[p] - W_j[p-1])/(2*gamma[j]*Delta_sum)
+        return D_jp
+
+    def get_D_j(self,j,W_j,B_j):
+        """
+        Input:
+            j - (int) index of a node
+            W_j - (list) output of get_W_j(j)
+            B_j - (list of lists) output of get_B_j(j,W_j)
+        """
+        D_j = []
+        for p in range(1,len(W_j)-1):
+            D_j.append(self.get_D_jp(j,W_j,B_j,p))
+        if B_j[-1] == []:
+            D_j.append(np.inf)
+        else: 
+            D_j.append(min(D_j))
+        return D_j
+
+    def get_D(self,W,B):
+        """
+        Input:
+            W - (list) output of get_W
+            B - (list of lists) output of get_B
+        """
+        D = []
+        for j in range(self.Network.size()):
+            D.append(self.get_D_j(j,W[j],B[j]))
+        return D
+
+    def get_theta_jp(self,j,W_j,B_j,D_j,p):
+        """
+        Input:
+            j - (int) index of a node
+            W_j - (list) output of get_W_j(j)
+            B_j - (list of lists) output of get_B_j(j,W_j)
+            p - (int) requires 0<p<=len(W_j)
+        """
+        N = self.Network.size()
+        theta_jp = np.zeros([N,N])
+        B_jp = B_j[p]
+        if B_jp == []:
+            return theta_jp
+        gamma = self.gamma
+        Delta = self.Delta
+        D_jp = D_j[p]
+        if p == 1:
+            theta_jp[B_jp[0],j] = 0
+        else:
+            theta_jp[B_jp[0],j] = (W_j[p-1] + gamma[j]*Delta[B_jp[0],j]*D_jp)/gamma[j]
+        for q in range(1,len(B_jp)):
+            i_q = B_jp[q]
+            i_qm1 = B_jp[q-1]
+            theta_jp[i_q,j] = theta_jp[i_qm1,j] + (Delta[i_qm1,j] + Delta[i_q,j])*D_jp
+        return theta_jp
+
+    def get_theta_j(self,j,W_j,B_j,D_j):
+        return sum([self.get_theta_jp(j,W_j,B_j,D_j,p) for p in range(len(B_j))])
+
+    def get_redundant_theta_j(self,j,W_j,B_j,max_D):
+        Delta = self.Delta
+        N = self.Network.size()
+        theta_j = np.zeros([N,N])
+        B_jn = B_j[-1]
+        theta_j[B_jn[0],j] = W_j[-2] + Delta[B_jn[0],j]*max_D
+        for q in range(1,len(B_jn)):
+            i_q = B_jn[q]
+            i_qm1 = B_jn[q-1]
+            theta_j[i_q,j] = theta_j[i_qm1,j] + (Delta[i_qm1,j] + Delta[i_q,j])*max_D
+        return theta_j
+
+    def optimal_theta(self):
+        """
+        Output:
+            theta - (numpy array) A choice of theta which produces the largest
+                    optimal_eps when L, Delta, and the DSGRN parameter node are fixed. 
+        """
+        W = self.get_W()
+        B = self._get_B(W)
+        D = self.get_D(W,B)
+        print(D,B)
+        redundant = []
+        N = self.Network.size()
+        theta = np.zeros([N,N])
+        for j in range(N):
+            if len(B[j][-1]) == len(self.Network.outputs(j)): #all thresholds for node j above all words
+                redunant.append(j)
+            else:
+                theta += self.get_theta_j(j,W[j],B[j],D[j])
+        if len(redundant) == N: #all thresholds for every node above all words
+            theta = self.theta*np.inf
+            nan_entries = np.isnan(theta)
+            theta[nan_entries] = 0
+            return theta
+        max_D = 0
+        for j in range(N):
+            for p in range(len(D[j])):
+                if D[j][p] != np.inf:
+                    max_D = max(max_D,D[j][p])
+        for j in redundant:
+            theta += self.get_redundant_theta_j(j,W[j],B[j],max_D)
+        return theta
+
+    
+    ####################################
+
     def is_regular(self,eps=None):
         """
         Returns True if the switching parameter is regular and False otherwise.

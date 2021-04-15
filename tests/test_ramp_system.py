@@ -179,6 +179,16 @@ class TestRampModel:
         assert(m[0,0]==m[1,0])
         assert(theta[0,0]+eps_out[0,0] == theta[1,0]-eps_out[1,0])
 
+    def test_optimal_theta(self):
+        N, L, Delta, theta, gamma = self.toggle_switch_parameters()
+        L = np.array([[0,1],[1,0]])
+        Delta = np.array([[0,1],[1,0]])
+        theta = np.array([[0,1.2],[1.8,0]])
+        gamma = np.array([1,1])
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        theta_out = RS.optimal_theta()
+        theta_expected = np.array([[0,1.5],[1.5,0]])
+        assert(np.array_equal(theta_out,theta_expected))
 
 
     def test_is_regular(self):
