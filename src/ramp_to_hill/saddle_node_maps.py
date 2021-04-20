@@ -15,35 +15,7 @@ import numpy as np
 from ramp_systems.cyclic_feedback_system import DEFAULT_TOLERANCE, CyclicFeedbackSystem
 import sympy
 import ramp_systems.decomposition as decomposition
-
-class HillParameter:
-
-    def __init__(self,sign,L,Delta,theta,n):
-        """
-        Input:
-            sign - either 1 or -1
-            L,Delta,theta,n - parameters for a hill function
-        """
-        self.sign = sign
-        self.L = L
-        self.Delta = Delta
-        self.theta = theta
-        self.n = n
-    
-    def __repr__(self):
-        sign = self.sign
-        L = self.L
-        Delta = self.Delta
-        theta = self.theta
-        n = self.n
-        return 'HillParameter({},{},{},{},{})'.format(sign,L,Delta,theta,n)
-
-    def func_value(self,x):
-        return hill_value(x,self)
-
-    def dx_value(self,x):
-        return self.sign*hill_derivative_magnitude(x,self)
-
+from ramp_to_hill.ramp_to_hill_function_map import *
 
 
 class HillSystemParameter:
@@ -125,53 +97,6 @@ class HillSystemParameter:
         return True
         
             
-
-def hill_value(x,hill_parameter):
-    sign = hill_parameter.sign
-    theta = hill_parameter.theta
-    Delta = hill_parameter.Delta
-    L = hill_parameter.L
-    n = hill_parameter.n
-    if sign == 1:
-        return L + Delta/((theta/x)**n + 1)
-    if sign == -1:
-        return L + Delta/((x/theta)**n + 1)
-
-def hill_second_derivative_root(*args):
-    if len(args) == 1:
-        hill_parameter = args[0]
-        theta = hill_parameter.theta
-        n = hill_parameter.n
-    elif len(args) == 2:
-        theta = args[0]
-        n = args[1]
-    else:
-        raise TypeError('hill_second_derivative_root() takes 1 or 2 position arguments\
-            but {} were given.'.format(len(args)))
-    return theta*((n-1)/(n+1))**(1/n)
-
-def hill_derivative_magnitude(x,*args):
-    if len(args) == 1:
-        hill_parameter = args[0]
-        sign = hill_parameter.sign
-        Delta = hill_parameter.Delta
-        theta = hill_parameter.theta
-        n = hill_parameter.n
-    elif len(args) == 4:
-        sign = args[0]
-        Delta = args[1]
-        theta = args[2]
-        n = args[3]
-    else: 
-        raise TypeError('hill_derivative() takes 1 or 4 positiional arguments\
-            but {} were given.'.format(len(args)))
-    if n == np.inf:
-        if theta == x:
-            return np.inf
-        else: 
-            return 0
-    return Delta*n/(theta*(theta/x)**(n-1) + 2*x + x*(x/theta)**n)
-
 
 def default_monotone_function(x):
     return x
@@ -278,9 +203,6 @@ class RampToHillSaddleMap:
             print('Mapped x is not an equilibrium.')
             return None,None
         return hill_sys, x_hill
-
-
-
 
     def get_sign_from_RS(self,RS):
         N = RS.Network.size()
@@ -459,59 +381,4 @@ class RampToHillSaddleMap:
         return x_jk
 
    
-
-
-
-class RampToHillFunctionMap:
-    """
-    Calling an instance of this class returns a HillParameter which corresponds 
-    to the given RampFunction. 
-    """
-    def __init__(self,max_allowed_hill_coefficient = 1e8):
-        self.max_allowed_hill_coefficient = max_allowed_hill_coefficient
-
-    
-
-    def get_hill_max_slope_func(self,RF):        
-        return lambda n: hill_derivative_magnitude(\
-            hill_second_derivative_root(RF.theta,n),RF.sign,RF.Delta,RF.theta,n)
-
-
-    def __call__(self,RF,eps):
-        """
-        Get the HillParameter corresponding to RF at eps. This is a bijective map.
-
-        Input: 
-            RF - RampFunction class instance
-            eps - positive scalar defining the width of the linear regime of a ramp 
-                  function
-        Output:
-            HillParameter instance with
-                L = RF.L
-                Delta = RF.Delta
-                sign = RF.sign
-                theta = RF.theta
-                n chosen so that the maximum slope of the hill function is the 
-                slope of the ramp function plus the maximum slope of a hill function
-                with hill coefficient 1
-        """
-        n_range = [1+1e-1,100] 
-        hill_coefficient_1_slope = RF.Delta/RF.theta
-        ramp_function_slope = RF.sign*RF.dx(RF.theta,eps)
-        target_hill_slope = ramp_function_slope + hill_coefficient_1_slope #chosen so that the map is bijective
-        hill_max_slope = self.get_hill_max_slope_func(RF)
-
-        f = lambda n: hill_max_slope(n) - target_hill_slope
-        while f(n_range[0]) > 0:
-                n_range[0] = 1 + (n_range[0]-1)*1e-1
-        while f(n_range[1])<0 and n_range[1] < self.max_allowed_hill_coefficient:
-            n_range[1] *= 10
-        if n_range[1] < self.max_allowed_hill_coefficient:
-            n = bisect(f,n_range[0],n_range[1])
-        else:
-            n = np.inf
-        return HillParameter(RF.sign,RF.L,RF.Delta,RF.theta,n)
-        
-
-        
 

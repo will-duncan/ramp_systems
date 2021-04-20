@@ -10,6 +10,7 @@ import numpy as np
 import itertools
 from ramp_systems.ramp_function import RampFunction
 from ramp_systems.cell import Cell
+from ramp_to_hill.ramp_to_hill_function_map import RampToHillFunctionMap
 from dsgrn_utilities.graphtranslation import netspec2nxgraph
 import networkx as nx
 
@@ -20,6 +21,20 @@ def power_set(iterable):
     for k in range(n+1):
         for combo in itertools.combinations(pool,k):
             yield combo
+
+def get_FPs_from_MG(MG):
+    MG_string = MG.stringify()
+    last_FP_index = 0
+    FPs = []
+    while True:
+        cur_FP_index = MG_string.find('FP',last_FP_index)
+        if cur_FP_index == -1:
+            #no remaining FPs so break out of loop
+            break
+        cur_FP_coord_string = MG_string[cur_FP_index + 5 : MG_string.find('}',cur_FP_index+5)-1]
+        last_FP_index = cur_FP_index + 5 + len(cur_FP_coord_string)
+        FPs.append([int(c) for c in cur_FP_coord_string.split(',')])
+    return FPs
     
 
 def get_ramp_system_from_parameter_string(pstring,Network):
@@ -229,7 +244,7 @@ class RampSystem:
     def _set_R(self):
         """
         Creates the 'R' attribute. R is an np array with dimensions [Network.size(),1] defined by 
-        x[j]'= -gamma[j]*x[j] + R[j]
+        x[j]'= -gamma[j,0]*x[j] + R[j]
         """
         Network = self.Network
         func_array = self.func_array
@@ -278,6 +293,60 @@ class RampSystem:
         return array
 
     
+
+
+    def is_weakly_equivalent(self,eps):
+        """
+        Return True if the ramp paramaeter (Z,eps) is weakly equivalent to (Z,0)
+        and False otherwise. Assumes self.is_regular().
+
+        Input: 
+            eps - (numpy array) choice of perturbation parameter
+        """
+        N = self.Network.size()
+        for j in range(N):
+            theta_out = self.theta[:,j]
+            out_index = {theta_out[i]:i for i in range(N)}
+            theta_out = theta_out[theta_out != 0]
+            theta_out.sort()
+            for i in range(len(theta_out)-1):
+                if theta_out[i] + eps[out_index[theta_out[i]],j] >= theta_out[i+1] - eps[out_index[theta_out[i+1]],j]:
+                    return False
+        return True
+
+
+    def is_strongly_equivalent(self,eps):
+        """
+        Returns True if the ramp parameter (Z,eps) is strongly equivalent to (Z,0)
+        and False otherwise. 
+
+        Input:
+            eps - (numpy array) choice of perturbation parameter
+        """
+        if not self.is_weakly_equivalent(eps):
+            return False
+        W = self.get_W()
+        B = self._get_B(W)
+        N = self.Network.size()
+        theta = self.theta
+        gamma = self.gamma
+        for j in range(N):
+            B_j = B[j]
+            W_j = W[j]
+            for p in range(len(B_j)):
+                B_jp = B_j[p]
+                if len(B_jp) == 0:
+                    continue
+                if p != 0 and gamma[j,0]*(theta[B_jp[0],j] - eps[B_jp[0],j]) <= W_j[p]:
+                    return False
+                if p != len(B_j) - 1 and gamma[j,0]*(theta[B_jp[-1],j] + eps[B_jp[-1],j]) >= W_j[p+1]:
+                    return False
+        return True
+
+    ##################################
+    # Optimal eps
+    ##################################
+
     def get_W(self):
         """
         Output:
@@ -323,12 +392,13 @@ class RampSystem:
             p - (int) requires 0<p<len(W_j)
             W_j - (list) output of get_W_j(j)
         Output:
-            B_jp - (list) indices of thresholds that lie between W_j[p] and W_j[p-1] 
+            B_jp - (list) indices of thresholds that lie between W_j[p] and W_j[p+1] 
                    ordered by the threshold order. 
         """
         theta = self.theta
         Network = self.Network
-        B_jp = [i for i in self.theta_order(j) if (theta[i,j] > W_j[p-1] and theta[i,j]<W_j[p])]
+        gamma = self.gamma
+        B_jp = [i for i in self.theta_order(j) if (gamma[j,0]*theta[i,j] > W_j[p] and gamma[j,0]*theta[i,j]<W_j[p+1])]
         return B_jp
 
     def _get_B_j(self,j,W_j):
@@ -337,11 +407,11 @@ class RampSystem:
             j - (int) index of a node
             W_j - (list) output of get_W_j(j)
         Output:
-            B_j - (list) list of lists of indices. For 0<p<len(W_j), B_j[p] is the output of B_jp
-                   B_j[0] = []
+            B_j - (list) list of lists of indices. B_j[p] is the output of B_jp
+
         """
-        B_j = [[]]
-        for p in range(1,len(W_j)):
+        B_j = []
+        for p in range(len(W_j)-1):
             B_jp = self._get_B_jp(j,W_j,p)
             B_j.append(B_jp)
         return B_j
@@ -351,56 +421,6 @@ class RampSystem:
         for j in range(self.Network.size()):
             B.append(self._get_B_j(j,W[j]))
         return B
-
-    def is_weakly_equivalent(self,eps):
-        """
-        Return True if the ramp paramaeter (Z,eps) is weakly equivalent to (Z,0)
-        and False otherwise. Assumes self.is_regular().
-
-        Input: 
-            eps - (numpy array) choice of perturbation parameter
-        """
-        N = self.Network.size()
-        for j in range(N):
-            theta_out = self.theta[:,j]
-            out_index = {theta_out[i]:i for i in range(N)}
-            theta_out = theta_out[theta_out != 0]
-            theta_out.sort()
-            for i in range(len(theta_out)-1):
-                if theta_out[i] + eps[out_index[theta_out[i]],j] >= theta_out[i+1] - eps[out_index[theta_out[i+1]],j]:
-                    return False
-        return True
-
-
-    def is_strongly_equivalent(self,eps):
-        """
-        Returns True if the ramp parameter (Z,eps) is strongly equivalent to (Z,0)
-        and False otherwise. 
-
-        Input:
-            eps - (numpy array) choice of perturbation parameter
-        """
-        if not self.is_weakly_equivalent(eps):
-            return False
-        W = self.get_W()
-        B = self._get_B(W)
-        N = self.Network.size()
-        for j in range(N):
-            B_j = B[j]
-            W_j = W[j]
-            for p in range(len(B_j)):
-                B_jp = B_j[p]
-                if len(B_jp) == 0:
-                    continue
-                if p != 0 and self.theta[B_jp[0],j] - eps[B_jp[0],j] <= W_j[p-1]:
-                    return False
-                if p != len(B_j) - 1 and self.theta[B_jp[-1],j] - eps[B_jp[-1],j] >= W_j[p]:
-                    return False
-        return True
-
-    ##################################
-    # Optimal eps
-    ##################################
 
     def _get_eps_jp(self,j,W_j,B_j,p):
         """
@@ -433,14 +453,14 @@ class RampSystem:
             lambda q: (theta[i(q),j] - theta[i(q-1),j])/(Delta[i(q),j] + Delta[i(q-1),j])
         D_tilde = min([theta_distance(q) for q in range(1,len(Theta_j))],default=np.inf)
         ##construct D
-        k = len(B_jp)-1
+        k = len(B_jp) - 1
         D_list = [D_tilde]
-        if p != 1:  #W_j[p-1] != 0
-            W_pm1_dist = (gamma[j]*theta[i(0),j] - W_j[p-1])/(gamma[j]*Delta[i(0),j])
-            D_list.append(W_pm1_dist)
-        if p != (len(W_j)-1):  #W_j[p] != inf
-            W_p_dist = (W_j[p] - gamma[j]*theta[i(k),j])/(gamma[j]*Delta[i(k),j])
+        if p != 0:  #W_j[p] != 0
+            W_p_dist = (gamma[j,0]*theta[i(0),j] - W_j[p])/(gamma[j,0]*Delta[i(0),j])
             D_list.append(W_p_dist)
+        if p != (len(W_j)-2):  #W_j[p+1] != inf
+            W_pp1_dist = (W_j[p+1] - gamma[j,0]*theta[i(k),j])/(gamma[j,0]*Delta[i(k),j])
+            D_list.append(W_pp1_dist)
         D = min(D_list)
         ##construct eps_jp
         for i in B_jp:
@@ -450,7 +470,7 @@ class RampSystem:
     def _get_eps_j(self,j,W_j,B_j):
         N = self.Network.size()
         eps_j = np.zeros([N,N])
-        for p in range(1,len(W_j)):
+        for p in range(len(B_j)):
             eps_j += self._get_eps_jp(j,W_j,B_j,p)
         return eps_j
 
@@ -486,12 +506,12 @@ class RampSystem:
             return np.inf
         Delta = self.Delta
         gamma = self.gamma
-        if p == 1:
+        if p == 0:
             Delta_sum = sum([Delta[i,j] for i in B_j[p][1:]])
-            D_jp = W_j[p]/(gamma[j]*(Delta[B_j[p][0],j] + 2*Delta_sum))
+            D_jp = W_j[p+1]/(gamma[j,0]*(Delta[B_j[p][0],j] + 2*Delta_sum))
         else:
             Delta_sum = sum([Delta[i,j] for i in B_j[p]])
-            D_jp = (W_j[p] - W_j[p-1])/(2*gamma[j]*Delta_sum)
+            D_jp = (W_j[p+1] - W_j[p])/(2*gamma[j,0]*Delta_sum)
         return D_jp
 
     def get_D_j(self,j,W_j,B_j):
@@ -502,7 +522,7 @@ class RampSystem:
             B_j - (list of lists) output of get_B_j(j,W_j)
         """
         D_j = []
-        for p in range(1,len(W_j)-1):
+        for p in range(0,len(B_j)-1):
             D_j.append(self.get_D_jp(j,W_j,B_j,p))
         if B_j[-1] == []:
             D_j.append(np.inf)
@@ -537,10 +557,10 @@ class RampSystem:
         gamma = self.gamma
         Delta = self.Delta
         D_jp = D_j[p]
-        if p == 1:
+        if p == 0:
             theta_jp[B_jp[0],j] = 0
         else:
-            theta_jp[B_jp[0],j] = (W_j[p-1] + gamma[j]*Delta[B_jp[0],j]*D_jp)/gamma[j]
+            theta_jp[B_jp[0],j] = (W_j[p] + gamma[j,0]*Delta[B_jp[0],j]*D_jp)/gamma[j,0]
         for q in range(1,len(B_jp)):
             i_q = B_jp[q]
             i_qm1 = B_jp[q-1]
@@ -571,19 +591,17 @@ class RampSystem:
         W = self.get_W()
         B = self._get_B(W)
         D = self.get_D(W,B)
-        print(D,B)
         redundant = []
         N = self.Network.size()
         theta = np.zeros([N,N])
         for j in range(N):
             if len(B[j][-1]) == len(self.Network.outputs(j)): #all thresholds for node j above all words
-                redunant.append(j)
+                redundant.append(j)
             else:
                 theta += self.get_theta_j(j,W[j],B[j],D[j])
         if len(redundant) == N: #all thresholds for every node above all words
-            theta = self.theta*np.inf
-            nan_entries = np.isnan(theta)
-            theta[nan_entries] = 0
+            theta = self.theta
+            theta[theta != 0] = np.inf
             return theta
         max_D = 0
         for j in range(N):
@@ -593,6 +611,53 @@ class RampSystem:
         for j in redundant:
             theta += self.get_redundant_theta_j(j,W[j],B[j],max_D)
         return theta
+
+    def extreme_slopes_with_optimal_theta(self):
+        """
+        Compute the minimum and maximum slopes attained when theta and eps are 
+        chosen optimally. 
+        Output:
+            (max_slope,min_slope)
+        """
+        W = self.get_W()
+        B = self._get_B(W)
+        D = self.get_D(W,B)
+        min_D = np.inf
+        max_D = 0
+        for j in range(self.Network.size()):
+            for p in range(len(D[j])):
+                if D[j][p] != np.inf:
+                    min_D = min(min_D,D[j][p])
+                    max_D = max(max_D,D[j][p])
+        return 1/(2*min_D), 1/(2*max_D)
+
+    def extreme_hill_coefficients_with_optimal_theta(self):
+        """
+        Compute the minumum and maximum hill coefficients corresponding to the 
+        ramp functions obtained by choosing theta and eps optimally. 
+        Output:
+            (max_n,min_n)
+        """
+        W = self.get_W()
+        B = self._get_B(W)
+        D = self.get_D(W,B)
+        theta_opt = self.optimal_theta()
+        RFs = self.ramp_function_object_array()
+        RF2HF_map = RampToHillFunctionMap()
+        largest_n = 1
+        smallest_n = np.inf
+        for j in range(self.Network.size()):
+            for p in range(len(B[j])):
+                for i in B[j][p]:
+                    RF = RFs[i,j]
+                    eps = self.Delta[i,j]*D[j][p]
+                    HF = RF2HF_map(RF,eps)
+                    n = HF.n
+                    if n > largest_n:
+                        largest_n = n
+                    if n < smallest_n:
+                        smallest_n = n
+        return largest_n, smallest_n
 
     
     ####################################
@@ -621,8 +686,9 @@ class RampSystem:
                 if sum(theta[i,:] == theta[i,j]) > 1:
                     return False
                 W_j = W[j][1:]
-                if gamma[j]*(theta[i,j] + eps[i,j]) in W_j or \
-                    gamma[j]*(theta[i,j] - eps[i,j]) in W_j:
+                print(gamma)
+                if gamma[j,0]*(theta[i,j] + eps[i,j]) in W_j or \
+                    gamma[j,0]*(theta[i,j] - eps[i,j]) in W_j:
                     return False
         return True
 
@@ -636,7 +702,10 @@ class RampSystem:
         theta[i_1,j]<theta[i_2,j]<...theta[i_k,j] are consecutive thresholds
         """
         theta_j = self.theta[:,j].copy()
-        theta_j[theta_j == 0] = np.inf
+        # theta_j[theta_j == 0] = np.inf
+        for i in range(self.Network.size()):
+            if i not in self.Network.outputs(j):
+                theta_j[i] = np.inf
         index_list = []
         while(sum(theta_j == np.inf) < self.Network.size()):
             i = np.argmin(theta_j)
@@ -646,7 +715,7 @@ class RampSystem:
 
     def all_theta_orders(self):
         orders = []
-        for j in self.Network.size():
+        for j in range(self.Network.size()):
             orders.append(self.theta_order(j))
         return orders
 
@@ -674,7 +743,7 @@ class RampSystem:
 
         :param cell: Cell object which is assumed to be opaque: RS.is_opaque(kappa). 
         :return: N x 1 array with equilibrium of x_r' on kappa for regular directions r. 
-        Entries corresponding to singular directions s are 0
+        Entries corresponding to singular directions are 0
         """
         Lambda = self.Lambda(kappa)
         eq = np.zeros([self.Network.size(),1])
@@ -682,6 +751,36 @@ class RampSystem:
             gamma_r = self.gamma[r,0]
             eq[r,0] = Lambda[r]/gamma_r
         return eq
+
+    def reg_equilibrium_cells_from_FPs(self,FPs):
+        theta_orders = self.all_theta_orders()
+        eq_cells = []
+        for FP in FPs:
+            cur_projection = []
+            for j, coord in enumerate(FP):
+                left_index = coord - 1
+                right_index = coord
+                if left_index == -1:
+                    left_target = -np.inf
+                else:
+                    left_target = theta_orders[j][left_index]
+                if right_index == len(theta_orders[j]):
+                    right_target = np.inf
+                else:
+                    right_target = theta_orders[j][right_index]
+                cur_projection.append((left_target,right_target))
+            eq_cells.append(Cell(self.theta,*cur_projection))
+        return eq_cells
+
+    def reg_equilibria_from_FPs(self,FPs):
+        eq_cells = self.reg_equilibrium_cells_from_FPs(FPs)
+        eq = []
+        Lambda = self.Lambda
+        gamma = self.gamma
+        for kappa in eq_cells:
+            eq.append(Lambda(kappa)/gamma)
+        return eq
+
 
     def __repr__(self):
         return 'RampSystem(Network = {},L = {},Delta = {},theta = {},gamma = {})'.format(self.Network.specification(),self.L,self.Delta,self.theta,self.gamma)

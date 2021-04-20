@@ -56,6 +56,23 @@ class TestRampModel:
             assert(np.isnan(func_array(theta[i,:])[i,j]))
             assert(R(theta[i,j]+1) == func_array(theta[i,:]+1)[i,j])
 
+
+    def test_eq_cells(self):
+        N, L, Delta, theta, gamma = self.toggle_switch_parameters()
+        L = [[0,1],[1,0]]
+        Delta = [[0,1],[1,0]]
+        gamma = [1,1]
+        theta = [[0,1.5],[1.5,0]]
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        expected_eq_cells = [Cell(RS.theta,(-np.inf,1),(0,np.inf)),Cell(RS.theta,(1,np.inf),(-np.inf,0))]
+        eq_cells_out = RS.reg_equilibrium_cells_from_FPs([(0,1),(1,0)])
+        assert(all(kappa in expected_eq_cells for kappa in eq_cells_out))
+        reg_eq_out = RS.reg_equilibria_from_FPs([(0,1),(1,0)])
+        reg_eq_expected = [np.array([[1],[2]]),np.array([[2],[1]])]
+        for eq in reg_eq_out:
+            assert(np.array_equal(eq,reg_eq_expected[0]) or np.array_equal(eq,reg_eq_expected[1]))
+
+
     def test_call(self):
         """__call__ depends on 'R' attribute so this implicitly tests _set_R"""
 
@@ -132,12 +149,13 @@ class TestRampModel:
         W = RS.get_W()
         j = 1
         B = RS._get_B(W)
-        eps_j1_out = RS._get_eps_jp(j,W[j],B[j],1)
+        print(W,B)
+        eps_j1_out = RS._get_eps_jp(j,W[j],B[j],0)
         eps_j1_expected = np.array([[0,1.5],[0,0]])
         assert(np.array_equal(eps_j1_out,eps_j1_expected))
         zero = np.zeros([2,2])
+        assert(np.array_equal(RS._get_eps_jp(j,W[j],B[j],1),zero))
         assert(np.array_equal(RS._get_eps_jp(j,W[j],B[j],2),zero))
-        assert(np.array_equal(RS._get_eps_jp(j,W[j],B[j],3),zero))
 
         
 
@@ -181,6 +199,7 @@ class TestRampModel:
 
     def test_optimal_theta(self):
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
+        #both nodes essential
         L = np.array([[0,1],[1,0]])
         Delta = np.array([[0,1],[1,0]])
         theta = np.array([[0,1.2],[1.8,0]])
@@ -189,16 +208,56 @@ class TestRampModel:
         theta_out = RS.optimal_theta()
         theta_expected = np.array([[0,1.5],[1.5,0]])
         assert(np.array_equal(theta_out,theta_expected))
+        #one redundant node
+        theta = np.array([[0,1.2],[2.1,0]])
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        theta_out = RS.optimal_theta()
+        theta_expected = np.array([[0,1.5],[2.5,0]])
+        assert(np.array_equal(theta_out,theta_expected))
+        #one node redundant, one node with theta below all words
+        theta = np.array([[0,.3],[2.1,0]])
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        theta_out = RS.optimal_theta()
+        theta_expected = np.array([[0,0],[3,0]])
+        assert(np.array_equal(theta_out,theta_expected))
+        #both nodes redundant
+        theta = np.array([[0,2.1],[2.5,0]])
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        theta_out = RS.optimal_theta()
+        theta_expected = np.array([[0,np.inf],[np.inf,0]])
+        assert(np.array_equal(theta_out,theta_expected))
+        
+        ## multiple target nodes
+        # thresholds separated by words
+        N,L,Delta,theta,gamma = self.toggle_plus_parameters()
+        L = np.array([[2,2.25],[.7,5]])
+        Delta = np.array([[4,.5],[1.8,10]])
+        theta = np.array([[11,24],[15,7]])
+        gamma = np.array([1,1])
+        #W[0] = [0,4.5,5.5,13.5,16.5,inf]
+        #W[1] = [0,3.5,10.5,12.5,37.5,inf]
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        theta_out = RS.optimal_theta()
+        theta_expected = np.array([[9.5,25],[15,7]])
+        assert(np.array_equal(theta_out,theta_expected))
+        #multiple thresholds between the same words
+        theta = np.array([[4.8,24],[5.2,7]])
+        RS = RampSystem(N,L,Delta,theta,gamma)
+        theta_out = RS.optimal_theta()
+        theta_expected = np.array([[4.8448,25],[5.3448,7]])
+        assert(np.allclose(theta_out,theta_expected))
+        
 
 
     def test_is_regular(self):
         """Inital tests of is_regular. Additional testing in test_optimal_eps as a sanity check."""
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
+        L = np.array([[0,1],[1,0]])
+        Delta = np.array([[0,1],[1,0]])
+        theta = np.array([[0,1],[1,0]])
+        gamma = np.array([1,1])
         RS = RampSystem(N,L,Delta,theta,gamma)
-        RS.L = np.array([[0,1],[1,0]])
-        RS.Delta = np.array([[0,1],[1,0]])
-        RS.theta = np.array([[0,1],[1,0]])
-        RS.gamma = np.array([1,1])
+        
         assert(~RS.is_regular() )
         RS.theta = np.array([[0,.8],[1.2,0]])
         assert(RS.is_regular() ) 
@@ -213,6 +272,10 @@ class TestRampModel:
 
     def test_equivalences(self):
         N, L, Delta, theta, gamma = self.toggle_switch_parameters()
+        L = np.array([[0,1],[2,0]])
+        Delta = np.array([[0,2],[2,0]])
+        theta = np.array([[0,1.5],[2,0]])
+        gamma = np.array([1,2])
         RS = RampSystem(N,L,Delta,theta,gamma)
         eps = np.zeros([2,2])
         assert(RS.is_weakly_equivalent(eps))
@@ -220,7 +283,7 @@ class TestRampModel:
         eps = np.array([[0,1],[1,0]])
         assert(RS.is_weakly_equivalent(eps))
         assert(not RS.is_strongly_equivalent(eps))
-        eps = np.array([[0,.5],[.5,0]])
+        eps = np.array([[0,.3],[.5,0]])
         assert(RS.is_weakly_equivalent(eps))
         assert(RS.is_strongly_equivalent(eps))
         eps = np.array([[0,0],[2,0]])
@@ -262,7 +325,7 @@ class TestRampModel:
         return N, L, Delta, theta, gamma
 
     def toggle_plus_parameters(self):
-        """Theta is chosen optimally and tests assume these parameters."""
+        #tests assume these parameters
         N = DSGRN.Network("X0 : (X0)(~X1) \n X1 : (X0)(X1)")
         #W[0] = [0,4.5,5.5,13.5,16.5,inf]
         #W[1] = [0,3.5,10.5,12.5,37.5,inf]
