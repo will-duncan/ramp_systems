@@ -293,7 +293,7 @@ class RampToHillSaddleMap:
         rho_inv = CFS.rho_inv
         rho = CFS.rho
         N = CFS.Network.size()
-        ramp_array = CFS.ramp_function_object_array()
+        ramp_array = CFS.ramp_object_array
         theta = CFS.theta
         gamma_product = CFS.gamma.prod()
 

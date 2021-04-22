@@ -1,5 +1,5 @@
 """
-RampModel class and methods
+RampSystem class and methods. 
 
     Author: William Duncan
 
@@ -178,6 +178,7 @@ class RampSystem:
         self.gamma = np.array(gamma,dtype = 'float').reshape([N,1])
         
         self._zero = np.zeros([Network.size(),Network.size()])
+        self.set_ramp_object_array()
         self._set_func_array()
         self._set_R()
         
@@ -259,19 +260,22 @@ class RampSystem:
         x[j]'= -gamma[j,0]*x[j] + R[j]
         """
         Network = self.Network
-        func_array = self.func_array
-        def R(x,eps,Network = Network,func_array = func_array):
-            R_array = np.zeros([Network.size(),1])
-            for i in range(Network.size()):
+        ramp_array = self.ramp_object_array
+        N = Network.size()
+        logic = Network.logic
+
+        def R(x,eps = self._zero):#N= Network.size(),logic = Network.logic,func_array = func_array):
+            R_array = np.zeros([N,1])
+            for i in range(N):
                 cur_prod = 1
-                for source_set in Network.logic(i):
+                for source_set in logic(i):
                     cur_sum = 0
                     for j in source_set:
-                        cur_sum = cur_sum + func_array(x,eps)[i,j]
+                        cur_sum = cur_sum + ramp_array[i,j](x[j],eps[i,j])
                     cur_prod =  cur_prod*cur_sum 
                 R_array[i] = cur_prod
             return R_array
-        self.R = lambda x,eps=self._zero: R(x,eps)
+        self.R = R
 
 
     def _set_func_array(self):
@@ -279,20 +283,20 @@ class RampSystem:
         Creates the func_array attribute.
         """
         Network = self.Network
-        def func_array(x, eps,Network = Network,ramp_func_array = self.ramp_function_object_array()):
-            x = np.array(x)
-            eps = np.array(eps)
-            N = Network.size()
+        ramp_array = self.ramp_object_array
+        N = Network.size()
+        inputs = Network.inputs
+        def func_array(x, eps = self._zero):
             F = np.zeros([N,N])
             for i in range(N):
-                for j in Network.inputs(i):
-                    Rij = ramp_func_array[i,j]
+                for j in inputs(i):
+                    Rij = ramp_array[i,j]
                     F[i,j] = Rij(x[j],eps[i,j])
             return F
         
-        self.func_array = lambda x,eps=self._zero: func_array(x,eps)
+        self.func_array = func_array
 
-    def ramp_function_object_array(self):
+    def set_ramp_object_array(self):
         """
         Creates a numpy array containing a RampFunction object in each entry [i,j]
         such that j->i is an edge in the network. 
@@ -306,7 +310,7 @@ class RampSystem:
             for j in self.Network.inputs(i):
                 sign = 1 if self.Network.interaction(j,i) else -1
                 array[i,j] = RampFunction(sign,L[i,j],Delta[i,j],theta[i,j])
-        return array
+        self.ramp_object_array = array
 
     
 
@@ -371,11 +375,14 @@ class RampSystem:
              W - (list) length Network.size() list of length 
                  Targets(j) sorted lists. W[j] is the output of get_W_j
         """
-        W = []
-
-        for j in range(self.Network.size()):
-            W_j = self._get_W_j(j)        
-            W.append(W_j)    
+        try:
+            W = self._W
+        except AttributeError:
+            W = []
+            for j in range(self.Network.size()):
+                W_j = self._get_W_j(j)        
+                W.append(W_j)    
+            self._W = W
         return W
                 
 
@@ -388,7 +395,8 @@ class RampSystem:
         """
         W_j_set = {0,np.inf}
         N = self.Network.size()
-        R_j = lambda x: self.R(x)[j,0]
+        #R_j = lambda x: self.R(x)[j,0]
+        R = self.R
         inputs = self.Network.inputs(j)
         test_point = np.zeros(N)
         x_low = 1/2*self.theta
@@ -398,39 +406,40 @@ class RampSystem:
             high_pattern = list(set(inputs) - set(low_pattern))
             test_point[low_pattern] = x_low[j,low_pattern]
             test_point[high_pattern] = x_high[j,high_pattern]
-            W_j_set = W_j_set.union({R_j(test_point)})
+            W_j_set = W_j_set.union({R(test_point)[j,0]})
         W_j = list(W_j_set) 
         W_j.sort()
         return W_j
 
-    def _get_B_jp(self,j,W_j,p):
+    def _get_B_jp(self,j,W_j,p,theta_order):
         """
         Input:
             j - (int) index of a node
             p - (int) requires 0<p<len(W_j)
             W_j - (list) output of get_W_j(j)
+            theta_order - list of target indices of node j sorted by size of theta[i,j]
         Output:
             B_jp - (list) indices of thresholds that lie between W_j[p] and W_j[p+1] 
                    ordered by the threshold order. 
         """
         theta = self.theta
-        Network = self.Network
         gamma = self.gamma
-        B_jp = [i for i in self.theta_order(j) if (gamma[j,0]*theta[i,j] > W_j[p] and gamma[j,0]*theta[i,j]<W_j[p+1])]
+        B_jp = [i for i in theta_order if (gamma[j,0]*theta[i,j] > W_j[p] and gamma[j,0]*theta[i,j]<W_j[p+1])]
         return B_jp
 
-    def _get_B_j(self,j,W_j):
+    def _get_B_j(self,j,W_j,theta_order):
         """
         Input:
             j - (int) index of a node
             W_j - (list) output of get_W_j(j)
+            theta_order - list of target indices for node j sorted by size of theta[i,j]
         Output:
             B_j - (list) list of lists of indices. B_j[p] is the output of B_jp
 
         """
         B_j = []
         for p in range(len(W_j)-1):
-            B_jp = self._get_B_jp(j,W_j,p)
+            B_jp = self._get_B_jp(j,W_j,p,theta_order)
             B_j.append(B_jp)
         return B_j
             
@@ -445,9 +454,14 @@ class RampSystem:
             The pth entry of B[j] is a list of target indices i for node j for which 
             theta[i,j] is between W[j][p] and W[j][p+1]. 
         """
-        B = []
-        for j in range(self.Network.size()):
-            B.append(self._get_B_j(j,W[j]))
+        try:
+            B = self._B 
+        except AttributeError:
+            B = []
+            theta_orders = self.all_theta_orders()
+            for j in range(self.Network.size()):
+                B.append(self._get_B_j(j,W[j],theta_orders[j]))
+            self._B = B
         return B
 
     def _get_eps_jp(self,j,W_j,B_j,p):
@@ -569,9 +583,13 @@ class RampSystem:
                 is a scalar which is used by get_theta_jp to get a choice of theta
                 which maximally separates the interval (W[j][p],W[j][p+1]). 
         """
-        D = []
-        for j in range(self.Network.size()):
-            D.append(self.get_D_j(j,W[j],B[j]))
+        try:
+            D = self._D
+        except AttributeError:
+            D = []
+            for j in range(self.Network.size()):
+                D.append(self.get_D_j(j,W[j],B[j]))
+            self._D = D
         return D
 
     def get_theta_jp(self,j,W_j,B_j,D_j,p):
@@ -707,7 +725,7 @@ class RampSystem:
         B = self._get_B(W)
         D = self.get_D(W,B)
         theta_opt = self.optimal_theta()
-        RFs = self.ramp_function_object_array()
+        RFs = self.ramp_object_array
         RF2HF_map = RampToHillFunctionMap()
         largest_n = 1
         smallest_n = np.inf

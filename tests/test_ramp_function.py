@@ -33,7 +33,7 @@ class TestRampFunction:
         #handles vectors
         x = np.array([.5,1,1.5])
         R_at_x = np.array([L,np.nan,L+Delta])
-        R_out = R(x)
+        R_out = R.evaluate(x)
         for i in range(len(x)):
             assert( (R_at_x[i] == R_out[i]) \
                 or (np.isnan(R_at_x[i]) and np.isnan(R_out[i])) )

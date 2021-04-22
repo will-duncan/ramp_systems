@@ -155,14 +155,14 @@ class TestCyclicFeedbackSystem:
         assert(len(zero_crossings) == 1)
         for crossing in zero_crossings:
             assert(np.allclose(crossing[0],.3162,rtol = 1e-4))
-            assert(np.allclose(cfs(crossing[1],[[0,.3162],[.3162,0]]),np.zeros([2,1]),atol=1e-4))
+            assert(np.allclose(cfs(crossing[1],np.array([[0,.3162],[.3162,0]])),np.zeros([2,1]),atol=1e-4))
         crossings,eps_func_out = cfs.border_crossings(eps_func)
         assert(eps_func_out == eps_func)
         assert(crossings[0][0][0] == zero_crossings[0][0])
         assert(len(crossings[1]) == 1)
         for crossing in crossings[1]:
             assert(np.allclose(crossing[0],.67202))
-            assert(np.allclose(cfs(crossing[1],[[0,.67202],[.67202,0]]),np.zeros([2,1]),atol=1e-4))
+            assert(np.allclose(cfs(crossing[1],np.array([[0,.67202],[.67202,0]])),np.zeros([2,1]),atol=1e-4))
         #get_bifurcations
         bifurcations = cfs.get_bifurcations(eps_func)[0]
         assert(not cfs.in_singular_domain(x_eq.subs(s,.37202),np.array([[0,.37202],[.37202,0]]),1))
