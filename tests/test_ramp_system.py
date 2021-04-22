@@ -64,9 +64,11 @@ class TestRampModel:
         gamma = [1,1]
         theta = [[0,1.5],[1.5,0]]
         RS = RampSystem(N,L,Delta,theta,gamma)
+        #check that the cells are correct
         expected_eq_cells = [Cell(RS.theta,(-np.inf,1),(0,np.inf)),Cell(RS.theta,(1,np.inf),(-np.inf,0))]
         eq_cells_out = RS.reg_equilibrium_cells_from_FPs([(0,1),(1,0)])
         assert(all(kappa in expected_eq_cells for kappa in eq_cells_out))
+        #check that the equilibria are correct
         reg_eq_out = RS.reg_equilibria_from_FPs([(0,1),(1,0)])
         reg_eq_expected = [np.array([[1],[2]]),np.array([[2],[1]])]
         for eq in reg_eq_out:

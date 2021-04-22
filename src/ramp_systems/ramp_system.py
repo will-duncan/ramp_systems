@@ -217,6 +217,18 @@ class RampSystem:
         return self.R(test_point)
 
     def get_cell_test_point(self,kappa,neighbor_index = None,neighbor_direction = None):
+        """
+        Gets a point x contained in a cell. 
+
+        Input:
+            kappa - Cell object
+            neighbor_index - (optional) index of a network node
+            neighbor_direction - (optional, required if neighbor_index is passed) one of 1 or -1
+        Output:
+            numpy array with shape (N,1) whose jth entry is the midpoint of of
+            pi_j(kappa) if neighbor_index and neighbor_direction are not passed and 
+            the midpoint of pi_j(kappa_{neighbor_index}^{neighbor_direction}) if it is. 
+        """
         N = self.Network.size()
         test_point = np.zeros([N,1])
         if neighbor_index is not None:
@@ -281,6 +293,10 @@ class RampSystem:
         self.func_array = lambda x,eps=self._zero: func_array(x,eps)
 
     def ramp_function_object_array(self):
+        """
+        Creates a numpy array containing a RampFunction object in each entry [i,j]
+        such that j->i is an edge in the network. 
+        """
         N = self.Network.size()
         array = np.empty([N,N],dtype = RampFunction)
         L = self.L
@@ -349,6 +365,8 @@ class RampSystem:
 
     def get_W(self):
         """
+        Create a list which stores they values attained by Lambda. The jth entry 
+        is a sorted list with the values of Lambda_j union {0,np.inf}. 
         Output:
              W - (list) length Network.size() list of length 
                  Targets(j) sorted lists. W[j] is the output of get_W_j
@@ -366,7 +384,7 @@ class RampSystem:
         Input: 
             j - (int) index of a node
         Output: 
-            W_j - (list) The set of values of Lambda_j union {0,np.inf}, sorted
+            W_j - (list) The values of Lambda_j union {0,np.inf}, sorted
         """
         W_j_set = {0,np.inf}
         N = self.Network.size()
@@ -417,6 +435,16 @@ class RampSystem:
         return B_j
             
     def _get_B(self,W):
+        """
+        Create a list of target indices i for each node j sorted by ordering of theta[i,j]. 
+        
+        Input:
+            W - output of get_W()
+        Output: 
+            B - (list) The jth entry is a list of length len(W[j]) - 1 where W = get_W(). 
+            The pth entry of B[j] is a list of target indices i for node j for which 
+            theta[i,j] is between W[j][p] and W[j][p+1]. 
+        """
         B = []
         for j in range(self.Network.size()):
             B.append(self._get_B_j(j,W[j]))
@@ -476,11 +504,12 @@ class RampSystem:
 
     def optimal_eps(self):
         """
+        Get a choice of eps which minimizes the maximum slope for each j among eps
+        which satisfy eps'<eps implies (Z,eps') is strongly equivalent to Z. This guarantees
+        all equilibrium cells of SWITCH(Z) have corresponding equilibria in R(Z,eps').
         Output:
-            eps - (numpy array) A choice of eps which minimizes the maximum slope
-                  for each j among eps which satisfiy eps'<eps implies (Z,eps')
-                  is strongly equivalent to (Z,0). This guarantees all equilibria 
-                  of DSGRN(Z) have corresponding equilibria in R(Z,eps'). 
+            eps - numpy array with eps.shape = [N,N]. If j->i is not an edge then 
+                  eps[i,j] = 0. 
         """
         Network = self.Network
         W = self.get_W()
@@ -535,6 +564,10 @@ class RampSystem:
         Input:
             W - (list) output of get_W
             B - (list of lists) output of get_B
+        Output: 
+            D - list of length N. The jth entry is a list of length B[j]. D[j][p] 
+                is a scalar which is used by get_theta_jp to get a choice of theta
+                which maximally separates the interval (W[j][p],W[j][p+1]). 
         """
         D = []
         for j in range(self.Network.size()):
@@ -543,11 +576,15 @@ class RampSystem:
 
     def get_theta_jp(self,j,W_j,B_j,D_j,p):
         """
+        Get a choice of theta which maximall separates teh interval (W_j[p],W_j[p+1]). 
         Input:
             j - (int) index of a node
             W_j - (list) output of get_W_j(j)
             B_j - (list of lists) output of get_B_j(j,W_j)
             p - (int) requires 0<p<=len(W_j)
+        Output:
+            theta - numpy array wich shape [N,N]. If k != j or i is not in B_j[p]
+                    then theta[i,k] = 0. 
         """
         N = self.Network.size()
         theta_jp = np.zeros([N,N])
@@ -568,9 +605,33 @@ class RampSystem:
         return theta_jp
 
     def get_theta_j(self,j,W_j,B_j,D_j):
+        """
+        Get a choice of theta which maximally separates each interval (W_j[p],W_j[p+1]) for 
+        each p in range(len(B_j)) = (0,...,len(W_j) - 2). 
+        Input:
+            j - network node index
+            W_j - W[j] where W = get_W()
+            B_j - B[j] where B = _get_B(W)
+            D_j - D[j] where D = get_D()
+        Output:
+            theta - numpy array with shape (N,N). If k != j or j->i is not an edge
+                    then theta[i,k] = 0. 
+        """
         return sum([self.get_theta_jp(j,W_j,B_j,D_j,p) for p in range(len(B_j))])
 
     def get_redundant_theta_j(self,j,W_j,B_j,max_D):
+        """
+        Get an optimal choice of theta[:,j] when theta[i,j] is greater than the largest
+        value of Lambda_j for each i. 
+        Input: 
+            j - network node index
+            W_j - W[j] where W = get_W()
+            B_j - B[j] where B = _get_B(W)
+            max_D - Largest value in D := get_D()
+        Output:
+            theta - numpy array with shape (N,N). If k != j or j->i is not an edge
+                    then theta[i,k] = 0. 
+        """
         Delta = self.Delta
         N = self.Network.size()
         theta_j = np.zeros([N,N])
@@ -584,9 +645,13 @@ class RampSystem:
 
     def optimal_theta(self):
         """
+        Get a choice of theta which produces the best optimal_eps when L, Delta, 
+        and the DSGRN parameter node are fixed.  
         Output:
-            theta - (numpy array) A choice of theta which produces the largest
-                    optimal_eps when L, Delta, and the DSGRN parameter node are fixed. 
+            theta - numpy array with shape (N,N). theta[i,j] = 0 if j->i is not an edge. 
+                    theta[i,j] = 0 when j->i is an edge is possible when there is a 
+                    threshold theta[i,j] which is smaller than all values attained by 
+                    Lambda_j. 
         """
         W = self.get_W()
         B = self._get_B(W)
