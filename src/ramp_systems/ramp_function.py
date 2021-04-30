@@ -37,24 +37,47 @@ class RampFunction:
         Evaluation method for the ramp function. 
         When eps == 0, returns np.nan at x==theta
         Input:
-            x - Requires x is one dimensional, i.e. a vector
+            x - Requires x is a list or a scalar
             eps - (scalar, optional)   
+        """
+        sign = self.sign
+        Delta = self.Delta
+        L = self.L
+        theta = self.theta
+        
+        # if eps != 0:
+        #     m = Delta/(2*eps)
+        # else: 
+        #     m=np.inf
+        if (x < theta - eps and sign == 1) or (x > theta+eps and sign == -1):
+            return L
+        elif (x > theta+eps and sign == 1) or (x < theta - eps and sign == -1):
+            return L + Delta
+        else:   
+            if eps == 0:
+                return np.nan
+            else:
+                return L + Delta/2 + sign*Delta/(2*eps)*(x-theta)
+
+            
+        
+    def evaluate(self,x,eps = 0):
+        """
+        Evaluate the ramp function on a list of values. 
+        Input:
+            x - list or numpy array
+            eps - (optional) scalar value
         """
         x = np.array(x)
         sign = self.sign
         Delta = self.Delta
         L = self.L
         theta = self.theta
-        
-        if eps != 0:
-            m = Delta/(2*eps)
-        else: 
-            m=np.inf
         out = np.zeros(x.shape)
         #x in singular domain
         mid_filter = np.logical_and(x >= theta - eps, x <= theta + eps)
         if eps != 0:
-            out[mid_filter] = (L + Delta/2 + sign*m*(x[mid_filter]-theta))
+            out[mid_filter] = (L + Delta/2 + sign*Delta/(2*eps)*(x[mid_filter]-theta))
         else: 
             out[mid_filter] = np.nan
         #x outside singular domain
@@ -66,13 +89,7 @@ class RampFunction:
         elif sign == -1:
             out[high_filter] = L
             out[low_filter] = (L+Delta)
-
         return out
-        
-
-        # return L*(H(sign)*H((theta-eps) - x) + H(-sign)*(H(x-(theta+eps)))) \
-        #     + (L + Delta)*(H(sign)*H(x-(theta+eps)) + H(-sign)*H((theta-eps)-x)) \
-        #     + (L + Delta/2 + sign*m*(x-theta))*H(x-(theta-eps))*H((theta+eps)-x)*int(eps>0)
 
     def dx(self,x,eps = 0):
         """
@@ -109,7 +126,7 @@ class RampFunction:
         else:
             xvals = [xlim[0], xlim[1]]
         xvals = np.array(xvals)
-        yvals = self(xvals,eps)
+        yvals = self.evaluate(xvals,eps)
         if (eps == 0): 
             if (xlim[0] < theta):
                 yvals[1] = self(theta-1,eps)
