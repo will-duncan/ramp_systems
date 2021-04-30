@@ -1,6 +1,27 @@
 
 import numpy as np
 import itertools
+import random
+
+def cell_from_coordinates(RS,*coords):
+    """
+    Create a Cell object from state transition graph coordinates.
+    :param RS: RampSystem object
+    :param *coords: jth argument is an integer corresponding to the jth coordinate
+    """
+    theta = RS.theta
+    theta_orders = RS.all_theta_orders()
+    projections = []
+    for j,coord in enumerate(coords):
+        theta_j = theta_orders[j]
+        if coord == 0:
+            projections.append((-np.inf,theta_j[0]))
+        elif coord < len(theta_j):
+            projections.append((theta_j[coord-1],theta_j[coord]))
+        else: #coord == len(theta_j)
+            projections.append((theta_j[-1],np.inf))
+    return Cell(theta,*projections)
+
 
 class Cell:
     
@@ -8,6 +29,7 @@ class Cell:
         """
         Create a Cell object.
 
+        :param theta: matrix of threshold values
         :param *projections: jth argument is either a pair of indices i_1, i_2 or single
         index i which correspond to target node(s) of node j. The jth projection of the
         cell is given by (theta[i_1,j],theta[i_2,j]) or {theta[i,j]}, respectively. 
@@ -33,6 +55,30 @@ class Cell:
             sin_dir = set(j for j in range(len(self.pi)) if len(self.pi[j]) == 1)
             self._sin_dir = sin_dir
         return sin_dir
+
+    def sample(self):
+        """
+        Get a point contained in the cell where for each regular direction j,
+        x[j] is chosen uniformly from the interval (theta[a_j,j],theta[b_j,j]) where
+        theta[b_j,j] = 2*theta[a_j,j] when b_j = inf 
+        """
+        x = np.zeros(len(self.pi))
+        rho = self.rho
+        theta = self.theta
+        pi = self.pi
+        for j in self.singular_directions():
+            x[j] = theta[rho[j],j]
+        for j in self.regular_directions():
+            if pi[j][0] == -np.inf:
+                left = 0
+            else:
+                left = theta[pi[j][0],j]
+            if pi[j][1] == np.inf:
+                right = 2*left
+            else:
+                right = theta[pi[j][1],j]
+            x[j] = random.uniform(left,right)
+        return x
 
     def __call__(self,j):
         return self.pi[j]

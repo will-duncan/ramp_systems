@@ -2,6 +2,35 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 
+def HS_ode(t,y,HS):
+    rhs = -HS.gamma*y + HS.lambda_value(y)
+    return rhs
+
+def at_HS_equilibrium(t,y,HS,tol = 1e-3):
+    val = np.linalg.norm(HS_ode(t,y,HS)) - tol
+    if val < 0:
+        return 0
+    else:
+        return val
+
+def simulate_HS(x0,HS,max_time,tol = 1e-3):
+    """
+    Simulate the hill system ODE. Terminate simulation if an equilibrium is found. 
+    Input:
+        x0 - initial condition
+        HS - HillSystemParameter object
+        max_time - time at which to terminate the simulation if an equilibrium hasn't been found
+    Output:
+        sol - output of solve_ivp
+    """
+    ode = lambda t,y: HS_ode(t,y,HS)
+    at_equilibrium = lambda t,y: at_HS_equilibrium(t,y,HS,tol)
+    at_equilibrium.terminal = True
+    integration_interval = (0,max_time)
+    sol = solve_ivp(ode,integration_interval,x0,method = 'BDF',events = at_equilibrium)
+    return sol
+
+
 def find_equilibrium(x0,HS,max_time,tol = 1e-3):
     """
     Simulate the ODE to equilibrium starting from x0
@@ -14,15 +43,17 @@ def find_equilibrium(x0,HS,max_time,tol = 1e-3):
     Output:
         x - value of the equilibrium, if found within max_time. If not found, returns -1
     """
-    def ode(t,y,HS = HS):
-        rhs = -HS.gamma*y + HS.lambda_value(y)
-        return rhs
-    def at_equilibrium(t,y,HS = HS,tol = tol):
-        val = np.linalg.norm(ode(t,y)) - tol
-        if val < 0:
-            return 0
-        else:
-            return val
+    ode = lambda t,y: HS_ode(t,y,HS)
+    at_equilibrium = lambda t,y: at_HS_equilibrium(t,y,HS,tol)
+    # def ode(t,y,HS = HS):
+    #     rhs = -HS.gamma*y + HS.lambda_value(y)
+    #     return rhs
+    # def at_equilibrium(t,y,HS = HS,tol = tol):
+    #     val = np.linalg.norm(ode(t,y)) - tol
+    #     if val < 0:
+    #         return 0
+    #     else:
+    #         return val
     at_equilibrium.terminal = True
     integration_interval = (0,max_time)
     sol = solve_ivp(ode,integration_interval,x0,method = 'BDF',events = at_equilibrium)
